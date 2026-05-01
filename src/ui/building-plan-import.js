@@ -1,11 +1,10 @@
-// "Add building plan" button → file picker → rasterize → store → mount → edit.
+// "Add building plan" button → file picker → store → mount → edit.
 //
-// The user picks a PDF or TIFF, sees it appear on the map at the current
-// view (or at the GeoTIFF's declared bounds if available), and is dropped
-// straight into an edit session — OsmInEdit-style.
+// The user picks a PNG, sees it appear on the map at the current view, and
+// is dropped straight into an edit session — OsmInEdit-style.
 
 import * as rasters from '../storage/rasters.js';
-import { rasterize as rasterizePdf } from '../raster/render-pdf.js';
+import { rasterize as readPng } from '../raster/render-png.js';
 import { initialCornersForCanvas, rowFromCorners } from '../raster/affine.js';
 import { mountOverlay } from '../map/raster-layers.js';
 import { startEditSession } from './georeference.js';
@@ -38,7 +37,7 @@ export function mountBuildingPlanImport({ map, refreshAll }) {
 }
 
 async function importBuildingPlan(file, { map, refreshAll }) {
-  const { blob, width, height } = await rasterizePdf(file);
+  const { blob, width, height } = await readPng(file);
 
   const corners = initialCornersForCanvas(map, width, height);
   const { gcps, transform, bounds } = rowFromCorners(corners, width, height);
@@ -46,7 +45,7 @@ async function importBuildingPlan(file, { map, refreshAll }) {
 
   const row = await rasters.create({
     name: file.name || `Building plan ${new Date().toISOString()}`,
-    source_format: 'pdf',
+    source_format: 'png',
     source_blob: file,
     display_blob: blob,
     gcps, transform, bounds,

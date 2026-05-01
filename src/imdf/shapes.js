@@ -249,9 +249,9 @@
  * @property {UUID} id
  * @property {UUID|null} level_id
  * @property {string} name
- * @property {'pdf'|'tif'} source_format
- * @property {Blob} source_blob                    // Original PDF/TIF
- * @property {Blob} display_blob                   // Rasterized PNG for MapLibre
+ * @property {'png'} source_format
+ * @property {Blob} source_blob                    // Original PNG
+ * @property {Blob} display_blob                   // PNG used for MapLibre
  * @property {{ px: [number, number], lngLat: LngLat }[]} gcps
  * @property {number[]} transform                  // 6-element affine
  * @property {[number, number, number, number]} bounds  // [west, south, east, north]

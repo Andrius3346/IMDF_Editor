@@ -1,8 +1,8 @@
 // Raster overlay CRUD (georeferenced floor plans).
 //
 // Each row holds two Blobs:
-//   - source_blob  : original PDF or TIF (kept for re-georeferencing)
-//   - display_blob : rasterized PNG used by the map renderer
+//   - source_blob  : original PNG (kept for re-georeferencing)
+//   - display_blob : PNG used by the map renderer
 //
 // Source Blobs can be tens of megabytes, so callers should prefer
 // `getMeta(id)` (no source_blob) when they only need transform/bounds.
@@ -59,7 +59,7 @@ export async function getMeta(id) {
 }
 
 /**
- * Get just the source PDF/TIF — call only when re-georeferencing.
+ * Get just the source PNG — call only when re-georeferencing.
  */
 export async function getSourceBlob(id) {
   const row = await get(id);
