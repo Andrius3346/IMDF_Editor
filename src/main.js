@@ -1,40 +1,28 @@
 // Entry module. Wires the storage layer, the MapLibre map canvas, the
 // Geoman edit handles, and the building-plan georeferencing UX to the
 // index.html shell.
+//
+// Persistence policy: the editor is intentionally session-only. On every
+// page load we wipe IndexedDB, and on reload/close we warn the user via
+// the browser's native unload prompt if there is unsaved work.
 
 import * as features from './storage/features.js';
 import * as rasters from './storage/rasters.js';
 import * as manifestStore from './storage/manifest.js';
-import * as preferences from './storage/preferences.js';
 import { hasData, clearAll } from './storage/db.js';
 import { importZip } from './io/zip-import.js';
 import { downloadZip, buildZip } from './io/zip-export.js';
 
 import { createMap } from './map/map.js';
 import { attachGeoman } from './map/geoman.js';
-import { mountOverlay, unmountAllOverlays } from './map/raster-layers.js';
+import { unmountAllOverlays } from './map/raster-layers.js';
 import { mountBuildingPlanImport } from './ui/building-plan-import.js';
 import { mountLayersPanel, refreshLayersPanel } from './ui/layers-panel.js';
 
 const $ = (id) => document.getElementById(id);
 
 let map = null;
-
-async function refreshStoragePanel() {
-  const persisted = await navigator.storage?.persisted?.();
-  $('persisted').textContent = persisted ? 'yes' : 'no (browser may evict)';
-
-  const est = await navigator.storage?.estimate?.();
-  if (est && est.quota) {
-    const used = formatBytes(est.usage ?? 0);
-    const quota = formatBytes(est.quota);
-    const pct = Math.min(100, ((est.usage ?? 0) / est.quota) * 100);
-    $('usage').textContent = `${used} of ${quota} (${pct.toFixed(1)}%)`;
-    $('usage-bar').style.width = `${pct}%`;
-  } else {
-    $('usage').textContent = 'unavailable';
-  }
-}
+let isDirty = false;
 
 async function refreshSummary() {
   const manifest = await manifestStore.getManifest();
@@ -62,15 +50,9 @@ async function refreshSummary() {
 }
 
 async function refreshAll() {
-  await Promise.all([refreshStoragePanel(), refreshSummary()]);
+  await refreshSummary();
   await refreshLayersPanel();
-}
-
-function formatBytes(n) {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 ** 2) return `${(n / 1024).toFixed(1)} KB`;
-  if (n < 1024 ** 3) return `${(n / 1024 ** 2).toFixed(1)} MB`;
-  return `${(n / 1024 ** 3).toFixed(2)} GB`;
+  isDirty = await hasData();
 }
 
 async function onImportClick() {
@@ -119,11 +101,17 @@ async function onClearClick() {
 }
 
 async function init() {
-  // Persistent storage matters here — without it the browser may evict our
-  // map under disk pressure, and there's no backend to recover from.
-  if (navigator.storage?.persist) {
-    try { await navigator.storage.persist(); } catch { /* ignore */ }
-  }
+  // Session-only editor: wipe any leftover state from a previous session
+  // before doing anything else, so the UI starts blank on every reload.
+  await clearAll();
+
+  // Native browser warning on reload / tab close / navigation when the
+  // editor holds work the user hasn't exported.
+  window.addEventListener('beforeunload', (e) => {
+    if (!isDirty) return;
+    e.preventDefault();
+    e.returnValue = ''; // Chrome requires a non-empty returnValue
+  });
 
   $('import-btn').addEventListener('click', onImportClick);
   $('import-input').addEventListener('change', onImportFile);
@@ -131,13 +119,10 @@ async function init() {
   $('clear-btn').addEventListener('click', onClearClick);
 
   // Map + Geoman + overlays. Failures here shouldn't crash the rest of the
-  // page, so log and continue — the storage panel still works.
+  // page, so log and continue — the sidebar still works.
   try {
     map = await createMap(document.getElementById('map'));
     await attachGeoman(map);
-
-    const overlays = await rasters.listMeta();
-    for (const row of overlays) await mountOverlay(map, row);
 
     mountBuildingPlanImport({ map, refreshAll });
     mountLayersPanel({ map, refreshAll });
@@ -149,7 +134,7 @@ async function init() {
 
   // DevTools playground.
   window.imdf = {
-    features, rasters, preferences, manifest: manifestStore,
+    features, rasters, manifest: manifestStore,
     importZip, downloadZip, buildZip, clearAll, hasData,
     refresh: refreshAll,
     map,

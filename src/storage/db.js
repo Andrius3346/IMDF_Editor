@@ -1,16 +1,19 @@
 // IndexedDB schema for the IMDF editor.
-// One database, four object stores. See plan for rationale.
+// One database, three object stores; used as the in-session state holder
+// for features, rasters, and the manifest. The DB is wiped on every page
+// load — see src/main.js — so it is never read across reloads.
 
 import { openDB } from 'https://esm.sh/idb@8';
 
 const DB_NAME = 'imdf-editor';
-const DB_VERSION = 1;
+// v2 drops the legacy 'preferences' store left over from when the editor
+// restored UI state across reloads.
+const DB_VERSION = 2;
 
 export const STORE = Object.freeze({
   META: 'meta',
   FEATURES: 'features',
   RASTERS: 'raster_overlays',
-  PREFERENCES: 'preferences',
 });
 
 let dbPromise = null;
@@ -20,6 +23,9 @@ export function getDb() {
     dbPromise = openDB(DB_NAME, DB_VERSION, {
       upgrade(db, oldVersion) {
         if (oldVersion < 1) createV1Schema(db);
+        if (oldVersion < 2 && db.objectStoreNames.contains('preferences')) {
+          db.deleteObjectStore('preferences');
+        }
       },
       blocked() {
         console.warn('IMDF editor: another tab is holding an older DB version open.');
@@ -43,8 +49,6 @@ function createV1Schema(db) {
 
   const rasters = db.createObjectStore(STORE.RASTERS, { keyPath: 'id' });
   rasters.createIndex('by_level', 'level_id');
-
-  db.createObjectStore(STORE.PREFERENCES, { keyPath: 'key' });
 }
 
 /**
@@ -53,26 +57,28 @@ function createV1Schema(db) {
 export async function clearAll() {
   const db = await getDb();
   const tx = db.transaction(
-    [STORE.META, STORE.FEATURES, STORE.RASTERS, STORE.PREFERENCES],
+    [STORE.META, STORE.FEATURES, STORE.RASTERS],
     'readwrite',
   );
   await Promise.all([
     tx.objectStore(STORE.META).clear(),
     tx.objectStore(STORE.FEATURES).clear(),
     tx.objectStore(STORE.RASTERS).clear(),
-    tx.objectStore(STORE.PREFERENCES).clear(),
   ]);
   await tx.done;
 }
 
 /**
- * True if any IMDF data is present (manifest or features). Used to decide
- * whether import should prompt the user before replacing.
+ * True if any IMDF data is present (manifest, features, or raster
+ * overlays). Used to decide whether import should prompt the user before
+ * replacing, and to gate the page-unload warning in main.js.
  */
 export async function hasData() {
   const db = await getDb();
   const featureCount = await db.count(STORE.FEATURES);
   if (featureCount > 0) return true;
+  const rasterCount = await db.count(STORE.RASTERS);
+  if (rasterCount > 0) return true;
   const manifest = await db.get(STORE.META, 'manifest');
   return manifest !== undefined;
 }

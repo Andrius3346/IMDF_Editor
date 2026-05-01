@@ -74,8 +74,6 @@ function renderRow(row, { isFirst, isLast, isEditing }) {
   downBtn.onclick = () => moveZ(row.id, -1);
   const trashBtn = button('icon', '🗑', 'Delete');
   trashBtn.onclick = async () => {
-    const ok = confirm(`Delete overlay "${row.name}"?`);
-    if (!ok) return;
     await rasters.remove(row.id);
     unmountOverlay(mounted.map, row.id);
     await mounted.refreshAll?.();
