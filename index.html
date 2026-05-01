@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>IMDF Editor</title>
+  <link rel="stylesheet" href="https://esm.sh/maplibre-gl@4/dist/maplibre-gl.css" />
+  <link rel="stylesheet" href="https://esm.sh/@geoman-io/maplibre-geoman-free/dist/maplibre-geoman.css" />
+  <style>
+    :root { color-scheme: light dark; --sidebar-w: 340px; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; font: 14px/1.4 system-ui, -apple-system, sans-serif; }
+    body { display: grid; grid-template-rows: auto 1fr; min-height: 100%; }
+    header {
+      padding: 10px 16px; border-bottom: 1px solid #8884;
+      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+      background: Canvas; z-index: 2;
+    }
+    header h1 { margin: 0; font-size: 16px; font-weight: 600; }
+    header .grow { flex: 1; }
+    button { padding: 6px 12px; font: inherit; cursor: pointer; }
+    button.primary { background: #4a90e2; color: white; border: 1px solid #3a7ac2; border-radius: 4px; }
+    button.primary:hover { background: #3a7ac2; }
+
+    #layout {
+      display: grid; grid-template-columns: 1fr var(--sidebar-w);
+      min-height: 0; overflow: hidden;
+    }
+    #map { position: relative; width: 100%; height: 100%; background: #1a1a1a; }
+
+    aside#sidebar {
+      border-left: 1px solid #8884; overflow: auto; padding: 12px 14px;
+    }
+    section { margin-bottom: 18px; }
+    section h2 { margin: 0 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.7; }
+    .card { padding: 10px 12px; border: 1px solid #8884; border-radius: 6px; }
+    table { border-collapse: collapse; font-variant-numeric: tabular-nums; width: 100%; }
+    table th, table td { padding: 3px 8px 3px 0; text-align: left; }
+    table th { font-weight: 600; opacity: 0.7; }
+    code { font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .muted { opacity: 0.7; }
+    .bar { width: 100%; height: 8px; background: #8883; border-radius: 4px; overflow: hidden; }
+    .bar > div { height: 100%; background: #4a90e2; }
+
+    /* Overlays panel */
+    #overlay-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; }
+    .overlay-row {
+      display: grid; grid-template-columns: auto 1fr auto; gap: 6px; align-items: center;
+      padding: 6px 8px; border: 1px solid #8884; border-radius: 4px;
+    }
+    .overlay-row.hidden-overlay { opacity: 0.55; }
+    .overlay-row .name {
+      font-size: 13px; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .overlay-row .name:hover { text-decoration: underline; }
+    .overlay-row .controls { display: flex; gap: 4px; align-items: center; }
+    .overlay-row button.icon {
+      background: transparent; border: 1px solid #8884; border-radius: 3px;
+      padding: 2px 6px; font-size: 12px; line-height: 1; cursor: pointer;
+    }
+    .overlay-row button.icon:hover { background: #8882; }
+    .overlay-row .opacity-row { grid-column: 1 / -1; display: flex; gap: 6px; align-items: center; font-size: 11px; opacity: 0.85; }
+    .overlay-row input[type=range] { flex: 1; }
+    .overlay-empty { padding: 8px; text-align: center; opacity: 0.6; font-size: 12px; }
+
+    /* Floating georef toolbar */
+    #georef-toolbar[hidden] { display: none !important; }
+    #georef-toolbar {
+      position: absolute; top: 12px; left: 12px; z-index: 5;
+      background: Canvas; border: 1px solid #8884; border-radius: 6px;
+      padding: 8px 10px; box-shadow: 0 2px 8px #0003;
+      display: flex; flex-direction: column; gap: 6px; min-width: 220px;
+    }
+    #georef-toolbar .title { font-weight: 600; font-size: 12px; }
+    #georef-toolbar .modes { display: flex; gap: 4px; }
+    #georef-toolbar .modes button { flex: 1; padding: 4px 6px; font-size: 12px; }
+    #georef-toolbar .modes button.active { background: #4a90e2; color: white; border-color: #3a7ac2; }
+    #georef-toolbar .opacity-row,
+    #georef-toolbar .scale-row { display: flex; gap: 6px; align-items: center; font-size: 12px; }
+    #georef-toolbar .opacity-row input[type=range],
+    #georef-toolbar .scale-row input[type=range] { flex: 1; }
+    #georef-toolbar .scale-row[hidden] { display: none !important; }
+    #georef-toolbar .scale-row button { font-size: 11px; padding: 2px 6px; }
+    #georef-toolbar .actions { display: flex; gap: 6px; justify-content: flex-end; }
+
+    @media (max-width: 720px) {
+      :root { --sidebar-w: 0px; }
+      #layout { grid-template-columns: 1fr; }
+      aside#sidebar { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>IMDF Editor</h1>
+    <span id="map-name" class="muted">no map loaded</span>
+    <span class="grow"></span>
+    <input type="file" id="building-plan-input" accept=".pdf,application/pdf" hidden />
+    <button id="add-building-plan-btn" class="primary">Add building plan</button>
+    <input type="file" id="import-input" accept=".zip" hidden />
+    <button id="import-btn">Import ZIP</button>
+    <button id="export-btn">Export ZIP</button>
+    <button id="clear-btn">Clear data</button>
+  </header>
+
+  <div id="layout">
+    <div id="map">
+      <div id="georef-toolbar" hidden>
+        <div class="title" id="georef-title">Georeference</div>
+        <div class="modes">
+          <button data-mode="drag">Move</button>
+          <button data-mode="rotate">Rotate</button>
+          <button data-mode="scale">Scale</button>
+          <button data-mode="edit">Resize</button>
+        </div>
+        <label class="scale-row" id="georef-scale-row" hidden>
+          <span>Scale</span>
+          <input type="range" id="georef-scale" min="0.25" max="4" step="0.005" value="1" />
+          <span id="georef-scale-val">100%</span>
+          <button id="georef-scale-reset" type="button">Reset</button>
+        </label>
+        <label class="opacity-row">
+          <span>Opacity</span>
+          <input type="range" id="georef-opacity" min="0" max="1" step="0.01" value="1" />
+          <span id="georef-opacity-val">100%</span>
+        </label>
+        <div class="actions">
+          <button id="georef-cancel">Cancel</button>
+          <button id="georef-done" class="primary">Done</button>
+        </div>
+      </div>
+    </div>
+
+    <aside id="sidebar">
+      <section>
+        <h2>Storage</h2>
+        <div class="card" id="storage-card">
+          <div><strong>Persistent:</strong> <span id="persisted">checking…</span></div>
+          <div style="margin-top: 6px;"><strong>Usage:</strong> <span id="usage">—</span></div>
+          <div class="bar" style="margin-top: 6px;"><div id="usage-bar" style="width: 0"></div></div>
+        </div>
+      </section>
+
+      <section>
+        <h2>Map summary</h2>
+        <div class="card">
+          <table id="summary">
+            <tbody>
+              <tr><th>Imported at</th><td id="imported-at">—</td></tr>
+              <tr><th>Manifest version</th><td id="manifest-version">—</td></tr>
+              <tr><th>Language</th><td id="manifest-language">—</td></tr>
+              <tr><th>Total features</th><td id="feature-count">0</td></tr>
+              <tr><th>Raster overlays</th><td id="raster-count">0</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section>
+        <h2>Overlays</h2>
+        <div class="card">
+          <ul id="overlay-list"></ul>
+          <div class="overlay-empty" id="overlay-empty">No overlays — click “Add building plan”.</div>
+        </div>
+      </section>
+
+      <section>
+        <h2>Features by type</h2>
+        <div class="card">
+          <table id="type-counts"><tbody></tbody></table>
+        </div>
+      </section>
+
+      <section>
+        <h2>Console</h2>
+        <p class="muted">
+          Storage helpers are exposed on <code>window.imdf</code> for DevTools testing.
+          Try <code>imdf.features.count()</code>, <code>imdf.rasters.listMeta()</code>, or <code>imdf.map</code>.
+        </p>
+      </section>
+    </aside>
+  </div>
+
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>

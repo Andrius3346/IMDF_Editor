@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pdftotext \"C:\\\\Vu\\\\Bakalauras\\\\IMDF_Editor\\\\IMDF_Editor\\\\IMDF_specification\\\\IMDF_Data_Model_Full.pdf\" -)",
+      "WebFetch(domain:geoman.io)",
+      "Bash(curl *)"
+    ]
+  }
+}
