@@ -3,7 +3,11 @@
     "allow": [
       "Bash(pdftotext \"C:\\\\Vu\\\\Bakalauras\\\\IMDF_Editor\\\\IMDF_Editor\\\\IMDF_specification\\\\IMDF_Data_Model_Full.pdf\" -)",
       "WebFetch(domain:geoman.io)",
-      "Bash(curl *)"
+      "Bash(curl *)",
+      "Bash(Get-ChildItem -Path \"C:\\\\Vu\\\\Bakalauras\\\\IMDF_Editor\\\\IMDF_Editor\" -Recurse -Directory)",
+      "Bash(Select-Object -ExpandProperty FullName)",
+      "WebFetch(domain:docs.ogc.org)",
+      "WebFetch(domain:register.apple.com)"
     ]
   }
 }

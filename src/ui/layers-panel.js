@@ -21,7 +21,6 @@ export function mountLayersPanel({ map, refreshAll }) {
 export async function refreshLayersPanel() {
   if (!mounted) return;
   const list = $('overlay-list');
-  const empty = $('overlay-empty');
   if (!list) return;
 
   const overlays = await rasters.listMeta();
@@ -29,7 +28,13 @@ export async function refreshLayersPanel() {
   const sorted = overlays.slice().sort((a, b) => (b.z_order ?? 0) - (a.z_order ?? 0));
 
   list.innerHTML = '';
-  empty.style.display = sorted.length ? 'none' : '';
+  const hasOverlays = sorted.length > 0;
+  document.body.classList.toggle('has-overlays', hasOverlays);
+  const sidebar = document.getElementById('sidebar');
+  if (sidebar) {
+    sidebar.hidden = !hasOverlays;
+    sidebar.style.display = hasOverlays ? '' : 'none';
+  }
 
   const editingId = getActiveOverlayId();
 

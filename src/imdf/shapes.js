@@ -59,16 +59,28 @@
 /** @typedef {Record<LanguageTag, string>|null} Labels */
 
 /**
+ * RESTRICTION-CATEGORY per IMDF spec — a string enum, not a boolean.
+ * @typedef {('employeesonly' | 'restricted' | 'unspecified')} RestrictionCategory
+ */
+
+/**
+ * GeoJSON Point geometry, used for the display_point property on every
+ * feature type that carries one. IMDF spec: required on venue, optional
+ * elsewhere.
+ * @typedef {{ type: 'Point', coordinates: LngLat }} DisplayPoint
+ */
+
+/**
  * @typedef {object} VenueProperties
  * @property {string} category
- * @property {boolean=} restriction
+ * @property {RestrictionCategory=} restriction
  * @property {Labels} name
  * @property {Labels=} alt_name
  * @property {string=} hours
  * @property {string=} website
  * @property {string=} phone
  * @property {UUID} address_id
- * @property {string=} display_point              // GeoJSON Point in some encodings
+ * @property {DisplayPoint=} display_point
  */
 
 /**
@@ -93,34 +105,34 @@
 /**
  * @typedef {object} BuildingProperties
  * @property {string} category
- * @property {boolean=} restriction
- * @property {Labels} name
+ * @property {RestrictionCategory=} restriction
+ * @property {Labels=} name
  * @property {Labels=} alt_name
  * @property {UUID=} address_id
- * @property {string=} display_point
+ * @property {DisplayPoint=} display_point
  */
 
 /**
  * @typedef {object} LevelProperties
  * @property {string} category
- * @property {boolean=} restriction
+ * @property {RestrictionCategory=} restriction
  * @property {boolean=} outdoor
  * @property {number} ordinal                     // Floor ordinal, 0 = ground
  * @property {Labels} name
- * @property {Labels=} short_name
- * @property {string=} display_point
- * @property {UUID[]} building_ids
+ * @property {Labels} short_name                  // Spec [1..*] — required
+ * @property {DisplayPoint=} display_point
+ * @property {UUID[]=} building_ids
  * @property {UUID=} address_id
  */
 
 /**
  * @typedef {object} SectionProperties
  * @property {string} category
- * @property {boolean=} restriction
- * @property {string=} accessibility
+ * @property {RestrictionCategory=} restriction
+ * @property {string[]=} accessibility
  * @property {Labels=} name
  * @property {Labels=} alt_name
- * @property {string=} display_point
+ * @property {DisplayPoint=} display_point
  * @property {UUID} level_id
  * @property {UUID[]=} parents                    // Section hierarchy
  * @property {UUID=} address_id
@@ -129,11 +141,11 @@
 /**
  * @typedef {object} UnitProperties
  * @property {string} category
- * @property {string[]=} restriction
+ * @property {RestrictionCategory=} restriction
  * @property {string[]=} accessibility
  * @property {Labels=} name
  * @property {Labels=} alt_name
- * @property {string=} display_point
+ * @property {DisplayPoint=} display_point
  * @property {UUID} level_id
  */
 
@@ -145,7 +157,7 @@
  * @property {string[]=} door
  * @property {Labels=} name
  * @property {Labels=} alt_name
- * @property {string=} display_point
+ * @property {DisplayPoint=} display_point
  * @property {UUID} level_id
  */
 
@@ -154,8 +166,8 @@
  * @property {string} category
  * @property {Labels=} name
  * @property {Labels=} alt_name
- * @property {string=} display_point
- * @property {UUID} anchor_id
+ * @property {DisplayPoint=} display_point
+ * @property {UUID=} anchor_id
  * @property {UUID} level_id
  */
 
@@ -193,9 +205,10 @@
 
 /**
  * @typedef {object} KioskProperties
- * @property {Labels} name
+ * @property {Labels=} name
  * @property {Labels=} alt_name
- * @property {UUID} anchor_id
+ * @property {DisplayPoint=} display_point
+ * @property {UUID=} anchor_id
  * @property {UUID} level_id
  */
 
@@ -207,12 +220,13 @@
 /**
  * @typedef {object} GeofenceProperties
  * @property {string} category
- * @property {string[]=} restriction
+ * @property {RestrictionCategory=} restriction
+ * @property {string[]=} accessibility
  * @property {Labels=} name
  * @property {Labels=} alt_name
- * @property {string=} display_point
+ * @property {DisplayPoint=} display_point
  * @property {UUID[]=} building_ids
- * @property {UUID=} level_id                     // Optional — geofences may span levels
+ * @property {UUID[]=} level_ids                  // Spec: geofences may span levels
  * @property {UUID[]=} parents
  * @property {string=} correlation_id
  */

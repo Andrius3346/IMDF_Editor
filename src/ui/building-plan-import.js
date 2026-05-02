@@ -36,7 +36,16 @@ export function mountBuildingPlanImport({ map, refreshAll }) {
   });
 }
 
-async function importBuildingPlan(file, { map, refreshAll }) {
+/**
+ * Read + persist a PNG, mount it on the map, and start a georef edit
+ * session. Exported so the creation wizard can drive it directly with
+ * custom commit/cancel callbacks. Pass `name` to label the overlay by
+ * its purpose (e.g. "Ground floor"); otherwise the file name is used.
+ * Returns the persisted raster row (synchronously after creation;
+ * callbacks fire later when the user clicks Done/Cancel in the georef
+ * toolbar).
+ */
+export async function importBuildingPlan(file, { map, refreshAll, onCommit, onCancel, name } = {}) {
   const { blob, width, height } = await readPng(file);
 
   const corners = initialCornersForCanvas(map, width, height);
@@ -44,7 +53,7 @@ async function importBuildingPlan(file, { map, refreshAll }) {
   const z_order = await nextZOrder();
 
   const row = await rasters.create({
-    name: file.name || `Building plan ${new Date().toISOString()}`,
+    name: name || file.name || `Building plan ${new Date().toISOString()}`,
     source_format: 'png',
     source_blob: file,
     display_blob: blob,
@@ -59,9 +68,17 @@ async function importBuildingPlan(file, { map, refreshAll }) {
 
   await startEditSession({
     map, row, imgW: width, imgH: height,
-    onCommit: () => refreshAll?.(),
-    onCancel: () => refreshAll?.(),
+    onCommit: (updated) => {
+      refreshAll?.();
+      onCommit?.(updated ?? row);
+    },
+    onCancel: () => {
+      refreshAll?.();
+      onCancel?.();
+    },
   });
+
+  return row;
 }
 
 async function nextZOrder() {

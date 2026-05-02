@@ -26,11 +26,15 @@
       display: grid; grid-template-columns: 1fr var(--sidebar-w);
       min-height: 0; overflow: hidden;
     }
-    #map { position: relative; width: 100%; height: 100%; background: #1a1a1a; }
+    #map { position: relative; width: 100%; height: 100%; background: Canvas; }
 
     aside#sidebar {
       border-left: 1px solid #8884; overflow: auto; padding: 12px 14px;
     }
+    /* Sidebar (currently only the Overlays panel) is hidden until the
+       first building plan is uploaded — the map gets the full width. */
+    body:not(.has-overlays) { --sidebar-w: 0px; }
+    body:not(.has-overlays) aside#sidebar { display: none; }
     section { margin-bottom: 18px; }
     section h2 { margin: 0 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.7; }
     .card { padding: 10px 12px; border: 1px solid #8884; border-radius: 6px; }
@@ -81,10 +85,187 @@
     #georef-toolbar .scale-row button { font-size: 11px; padding: 2px 6px; }
     #georef-toolbar .actions { display: flex; gap: 6px; justify-content: flex-end; }
 
+    /* Geoman's built-in toolbar (top-left of the map) is permanently
+       hidden. The wizard drives all geometry creation; click-to-select
+       handles editing. The MapLibre navigation control on top-right is
+       unaffected. */
+    .maplibregl-ctrl-top-left { display: none !important; }
+
+    /* Wizard modal + form primitives */
+    #modal-root:empty { display: none; }
+    .modal-overlay {
+      position: fixed; inset: 0; background: #0008; z-index: 100;
+      display: flex; align-items: center; justify-content: center;
+      padding: 16px;
+    }
+    .modal-dialog {
+      background: Canvas; color: CanvasText; border: 1px solid #8884;
+      border-radius: 8px; box-shadow: 0 8px 32px #0006;
+      max-width: 480px; width: 100%; max-height: 90vh; overflow: auto;
+      display: flex; flex-direction: column;
+    }
+    .modal-dialog h2 {
+      margin: 0; padding: 14px 18px; border-bottom: 1px solid #8884;
+      font-size: 14px; text-transform: uppercase; letter-spacing: 0.05em;
+    }
+    .modal-body { padding: 16px 18px; display: flex; flex-direction: column; gap: 12px; }
+    .modal-actions {
+      padding: 12px 18px; border-top: 1px solid #8884;
+      display: flex; gap: 8px; justify-content: flex-end;
+    }
+    .modal-intro { margin: 0; opacity: 0.8; }
+
+    .field { display: flex; flex-direction: column; gap: 4px; }
+    .field label { font-size: 12px; font-weight: 600; opacity: 0.85; }
+    .field label .req { color: #e64; margin-left: 2px; }
+    .field input, .field select, .field textarea {
+      font: inherit; padding: 6px 8px; border: 1px solid #8886;
+      border-radius: 4px; background: Canvas; color: CanvasText;
+    }
+    .field input:focus, .field select:focus, .field textarea:focus {
+      outline: 2px solid #4a90e2; outline-offset: -1px; border-color: #4a90e2;
+    }
+    .field-error { color: #e64; font-size: 12px; min-height: 0; }
+    .field-error:not(:empty) { min-height: 1em; }
+    .field-row { display: flex; gap: 8px; }
+    .field-row > .field { flex: 1; }
+    .field-checkbox { flex-direction: row; align-items: center; gap: 8px; }
+    .field-checkbox label { order: 2; font-weight: normal; }
+
+    /* Wizard floating prompt — appears over the map for "draw X" steps */
+    .wizard-floating-prompt {
+      position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+      z-index: 6; background: Canvas; color: CanvasText;
+      border: 1px solid #8884; border-radius: 6px;
+      box-shadow: 0 2px 8px #0003;
+      padding: 10px 14px; min-width: 280px; max-width: 460px;
+      display: flex; flex-direction: column; gap: 8px;
+    }
+    .wizard-floating-prompt .title { font-weight: 600; font-size: 13px; }
+    .wizard-floating-prompt .hint { font-size: 12px; opacity: 0.8; margin: 0; }
+    .wizard-floating-prompt .actions { display: flex; gap: 6px; justify-content: flex-end; }
+
+    /* Floor unit-loop panel — sits in the sidebar area */
+    .wizard-floor-panel {
+      position: absolute; top: 12px; right: 12px; z-index: 6;
+      background: Canvas; color: CanvasText;
+      border: 1px solid #8884; border-radius: 6px;
+      box-shadow: 0 2px 8px #0003;
+      padding: 10px 14px; min-width: 220px;
+      display: flex; flex-direction: column; gap: 6px;
+    }
+    .wizard-floor-panel .title { font-weight: 600; font-size: 13px; }
+    .wizard-floor-panel .meta { font-size: 12px; opacity: 0.8; }
+    .wizard-floor-panel .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+    .wizard-floor-panel button[disabled] { opacity: 0.5; cursor: not-allowed; }
+
+    .floor-list { width: 100%; }
+    .floor-list th, .floor-list td { padding: 4px 8px 4px 0; font-size: 13px; }
+
+    /* Property panel — slides in over the map from the right when a
+       feature is selected. Sits on top of the right sidebar so the user
+       can still see the summary while editing. */
+    .property-panel {
+      position: absolute; top: 0; right: 0; bottom: 0;
+      width: 360px; max-width: 90vw;
+      background: Canvas; color: CanvasText;
+      border-left: 1px solid #8884;
+      box-shadow: -2px 0 12px #0004;
+      transform: translateX(100%);
+      transition: transform 160ms ease;
+      z-index: 7;
+      display: flex; flex-direction: column;
+    }
+    .property-panel.open { transform: translateX(0); }
+    .property-panel .pp-header {
+      display: flex; align-items: center; gap: 8px;
+      padding: 10px 14px; border-bottom: 1px solid #8884;
+    }
+    .property-panel .pp-title {
+      flex: 1; margin: 0; font-size: 13px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.04em;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .property-panel .pp-close {
+      background: transparent; border: 1px solid #8884; border-radius: 3px;
+      padding: 2px 8px; font-size: 14px; line-height: 1; cursor: pointer;
+    }
+    .property-panel .pp-step-header {
+      padding: 10px 14px; border-bottom: 1px solid #8884;
+      background: #4a90e210;
+    }
+    .property-panel .pp-step-header .step-num {
+      font-size: 11px; opacity: 0.7; text-transform: uppercase; letter-spacing: 0.04em;
+    }
+    .property-panel .pp-step-header .step-title {
+      font-size: 14px; font-weight: 600; margin-top: 2px;
+    }
+    .property-panel .pp-step-header .step-intro {
+      font-size: 12px; opacity: 0.8; margin: 6px 0 0;
+    }
+    .property-panel .pp-body {
+      flex: 1; overflow: auto; padding: 14px;
+      display: flex; flex-direction: column; gap: 12px;
+    }
+    .property-panel .pp-actions {
+      display: flex; gap: 8px; padding: 10px 14px; border-top: 1px solid #8884;
+    }
+    .property-panel .pp-actions .pp-spacer { flex: 1; }
+    .property-panel .pp-actions .pp-delete { color: #c33; }
+    .property-panel .pp-note { margin: 0; opacity: 0.75; font-size: 12px; }
+    .property-panel .pp-json {
+      background: #8881; padding: 8px 10px; border-radius: 4px;
+      font: 11px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+      white-space: pre-wrap; word-break: break-all; margin: 0;
+    }
+
+    /* Field-hint (neutral helper text below labels). Distinct from
+       field-error which is colored. */
+    .field-hint { font-size: 12px; opacity: 0.7; }
+
+    /* labels field: rows of [lang | value | ×] + add button */
+    .field-labels { display: flex; flex-direction: column; gap: 4px; }
+    .labels-row {
+      display: grid; grid-template-columns: 70px 1fr auto; gap: 6px; align-items: center;
+    }
+    .labels-row input.labels-lang { padding: 4px 6px; }
+    .labels-row input.labels-value { padding: 4px 6px; }
+    .labels-row button.icon {
+      background: transparent; border: 1px solid #8884; border-radius: 3px;
+      padding: 2px 8px; font-size: 14px; line-height: 1; cursor: pointer;
+    }
+    .labels-add {
+      align-self: flex-start;
+      background: transparent; border: 1px dashed #8886;
+      padding: 4px 10px; font-size: 12px; cursor: pointer; border-radius: 4px;
+    }
+
+    /* multi-select / ref-multi field: checkbox grid */
+    .field-multi-select {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      gap: 4px 8px;
+      max-height: 180px; overflow: auto;
+      border: 1px solid #8884; border-radius: 4px; padding: 6px 8px;
+    }
+    .multi-check {
+      display: flex; align-items: center; gap: 6px; font-weight: normal;
+      font-size: 12px; cursor: pointer;
+    }
+
+    /* display_point field */
+    .field-display-point {
+      display: flex; flex-direction: column; gap: 6px;
+      padding: 6px 8px; border: 1px solid #8884; border-radius: 4px;
+    }
+    .display-point-summary { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .display-point-actions { display: flex; gap: 6px; }
+    .display-point-actions button { padding: 3px 8px; font-size: 12px; }
+
     @media (max-width: 720px) {
       :root { --sidebar-w: 0px; }
       #layout { grid-template-columns: 1fr; }
       aside#sidebar { display: none; }
+      .property-panel { width: 100vw; }
     }
   </style>
 </head>
@@ -94,11 +275,8 @@
     <span id="map-name" class="muted">no map loaded</span>
     <span class="grow"></span>
     <input type="file" id="building-plan-input" accept=".png,image/png" hidden />
-    <button id="add-building-plan-btn" class="primary">Add building plan</button>
+    <button id="add-building-plan-btn" class="primary" hidden>Add building plan</button>
     <input type="file" id="import-input" accept=".zip" hidden />
-    <button id="import-btn">Import ZIP</button>
-    <button id="export-btn">Export ZIP</button>
-    <button id="clear-btn">Clear data</button>
   </header>
 
   <div id="layout">
@@ -127,48 +305,20 @@
           <button id="georef-done" class="primary">Done</button>
         </div>
       </div>
+      <aside id="property-panel" class="property-panel"></aside>
     </div>
 
-    <aside id="sidebar">
-      <section>
-        <h2>Map summary</h2>
-        <div class="card">
-          <table id="summary">
-            <tbody>
-              <tr><th>Imported at</th><td id="imported-at">—</td></tr>
-              <tr><th>Manifest version</th><td id="manifest-version">—</td></tr>
-              <tr><th>Language</th><td id="manifest-language">—</td></tr>
-              <tr><th>Total features</th><td id="feature-count">0</td></tr>
-              <tr><th>Raster overlays</th><td id="raster-count">0</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
-
+    <aside id="sidebar" hidden style="display: none">
       <section>
         <h2>Overlays</h2>
         <div class="card">
           <ul id="overlay-list"></ul>
-          <div class="overlay-empty" id="overlay-empty">No overlays — click “Add building plan”.</div>
         </div>
-      </section>
-
-      <section>
-        <h2>Features by type</h2>
-        <div class="card">
-          <table id="type-counts"><tbody></tbody></table>
-        </div>
-      </section>
-
-      <section>
-        <h2>Console</h2>
-        <p class="muted">
-          Storage helpers are exposed on <code>window.imdf</code> for DevTools testing.
-          Try <code>imdf.features.count()</code>, <code>imdf.rasters.listMeta()</code>, or <code>imdf.map</code>.
-        </p>
       </section>
     </aside>
   </div>
+
+  <div id="modal-root"></div>
 
   <script type="module" src="./src/main.js"></script>
 </body>

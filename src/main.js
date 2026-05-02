@@ -15,54 +15,30 @@ import { downloadZip, buildZip } from './io/zip-export.js';
 
 import { createMap } from './map/map.js';
 import { attachGeoman } from './map/geoman.js';
-import { unmountAllOverlays } from './map/raster-layers.js';
+import { mountFeaturesLayer, refreshFeaturesLayer } from './map/features-layer.js';
+import { installFeatureSelect } from './map/feature-select.js';
 import { mountBuildingPlanImport } from './ui/building-plan-import.js';
 import { mountLayersPanel, refreshLayersPanel } from './ui/layers-panel.js';
+import { mountPropertyPanel } from './ui/property-panel.js';
+import { showWelcomeModal } from './ui/welcome-modal.js';
+import { startWizard } from './ui/wizard/wizard.js';
 
 const $ = (id) => document.getElementById(id);
 
 let map = null;
 let isDirty = false;
 
-async function refreshSummary() {
+async function refreshHeader() {
   const manifest = await manifestStore.getManifest();
-  const importedAt = await manifestStore.getImportedAt();
   const mapName = await manifestStore.getMapName();
-
   $('map-name').textContent = mapName ?? (manifest ? '(unnamed map)' : 'no map loaded');
-  $('imported-at').textContent = importedAt ? new Date(importedAt).toLocaleString() : '—';
-  $('manifest-version').textContent = manifest?.version ?? '—';
-  $('manifest-language').textContent = manifest?.language ?? '—';
-
-  const total = await features.count();
-  $('feature-count').textContent = String(total);
-
-  const overlays = await rasters.listMeta();
-  $('raster-count').textContent = String(overlays.length);
-
-  const counts = await Promise.all(
-    features.FEATURE_TYPES.map(async (t) => [t, (await features.byType(t)).length]),
-  );
-  const tbody = $('type-counts').querySelector('tbody');
-  tbody.innerHTML = counts
-    .map(([t, n]) => `<tr><th>${t}</th><td>${n}</td></tr>`)
-    .join('');
 }
 
 async function refreshAll() {
-  await refreshSummary();
+  await refreshHeader();
   await refreshLayersPanel();
+  if (map) await refreshFeaturesLayer(map);
   isDirty = await hasData();
-}
-
-async function onImportClick() {
-  if (await hasData()) {
-    const ok = confirm(
-      'Importing will replace the current map. Export first if you want to keep it.\n\nReplace now?',
-    );
-    if (!ok) return;
-  }
-  $('import-input').click();
 }
 
 async function onImportFile(ev) {
@@ -81,23 +57,38 @@ async function onImportFile(ev) {
   }
 }
 
-async function onExportClick() {
+async function finishMapAndReload() {
   try {
     const name = (await manifestStore.getMapName()) ?? 'imdf-map';
-    const result = await downloadZip(`${name}.zip`);
-    console.log('Exported:', result);
+    await downloadZip(`${name}.zip`);
   } catch (e) {
-    console.error('Export failed:', e);
-    alert(`Export failed: ${e.message}`);
+    console.error('Auto-export on finish failed:', e);
+    alert(`Could not export map: ${e.message}`);
+    return;
+  }
+  // The map was just saved to disk — clear isDirty so the beforeunload
+  // listener doesn't prompt before reload.
+  isDirty = false;
+  // Tiny delay so the browser commits the blob download before navigation.
+  setTimeout(() => window.location.reload(), 100);
+}
+
+async function presentWelcomeFlow() {
+  setAddPlanButtonVisible(false);
+  const choice = await showWelcomeModal();
+  if (choice === 'create') {
+    const result = await startWizard({ map, refreshAll });
+    setAddPlanButtonVisible(true);
+    if (result?.finished) await finishMapAndReload();
+  } else {
+    setAddPlanButtonVisible(true);
+    if (choice === 'import') $('import-input').click();
   }
 }
 
-async function onClearClick() {
-  const ok = confirm('Clear all locally stored map data? This cannot be undone.');
-  if (!ok) return;
-  if (map) unmountAllOverlays(map);
-  await clearAll();
-  await refreshAll();
+function setAddPlanButtonVisible(visible) {
+  const btn = $('add-building-plan-btn');
+  if (btn) btn.hidden = !visible;
 }
 
 async function init() {
@@ -113,24 +104,30 @@ async function init() {
     e.returnValue = ''; // Chrome requires a non-empty returnValue
   });
 
-  $('import-btn').addEventListener('click', onImportClick);
   $('import-input').addEventListener('change', onImportFile);
-  $('export-btn').addEventListener('click', onExportClick);
-  $('clear-btn').addEventListener('click', onClearClick);
 
   // Map + Geoman + overlays. Failures here shouldn't crash the rest of the
   // page, so log and continue — the sidebar still works.
   try {
     map = await createMap(document.getElementById('map'));
     await attachGeoman(map);
+    mountFeaturesLayer(map);
 
     mountBuildingPlanImport({ map, refreshAll });
     mountLayersPanel({ map, refreshAll });
+    mountPropertyPanel({ map, refreshAll });
+    installFeatureSelect(map);
   } catch (err) {
     console.error('Map init failed:', err);
   }
 
   await refreshAll();
+
+  // Welcome screen. clearAll() ran at the top of init(), so on every fresh
+  // page load this prompts the user to pick a starting point. If they pick
+  // "Import existing" we just trigger the existing file picker and let the
+  // normal flow take over.
+  if (map) await presentWelcomeFlow();
 
   // DevTools playground.
   window.imdf = {
