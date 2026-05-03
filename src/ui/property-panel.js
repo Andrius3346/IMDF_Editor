@@ -94,7 +94,9 @@ export async function showFeatureForEdit(featureId) {
         const result = collectAndValidate(fields, fieldEls);
         if (!result.ok) return;
         const cleanProps = stripEmpty(result.values);
-        const updated = { ...row, properties: cleanProps, level_id: cleanProps.level_id ?? null };
+        const passthrough = preserveNonFormProps(row.properties, fields);
+        const merged = { ...passthrough, ...cleanProps };
+        const updated = { ...row, properties: merged, level_id: merged.level_id ?? null };
         await features.put(updated);
         await mounted.refreshAll?.();
         await showFeatureForEdit(row.id); // re-render with saved state
@@ -116,8 +118,10 @@ export async function showFeatureForEdit(featureId) {
  * @param {{ current:number, total:number, title:string, intro?:string }} opts.step
  * @param {string} [opts.primaryLabel='Continue']
  * @param {string[]} [opts.hideFields] Schema field names to omit from the
- *   wizard form (e.g. ['display_point'] — auto-set by the wizard, not
- *   user-editable). Post-creation editor still shows the full schema.
+ *   wizard form (e.g. ['building_ids'] — set by the wizard's parent step,
+ *   not user-editable). Existing values for these fields on the stub row
+ *   are preserved through save automatically. Post-creation editor still
+ *   shows the full schema.
  * @param {() => any} [opts.onCancel] Called BEFORE the Promise resolves null;
  *   wizard uses it to remove the stub row. Cancel routes through the
  *   panel's × close icon (Esc is not bound — matches the old
@@ -161,14 +165,8 @@ export async function showFeatureForWizard({
           const result = collectAndValidate(fields, fieldEls);
           if (!result.ok) return;
           const cleanProps = stripEmpty(result.values);
-          // Preserve values for fields hidden from the wizard form (e.g.
-          // display_point pre-set on the stub from the polygon centroid).
-          const preserved = {};
-          for (const name of hideFields) {
-            const v = row.properties?.[name];
-            if (v !== undefined && v !== null) preserved[name] = v;
-          }
-          const merged = { ...preserved, ...cleanProps };
+          const passthrough = preserveNonFormProps(row.properties, fields);
+          const merged = { ...passthrough, ...cleanProps };
           const updated = {
             ...row,
             properties: merged,
@@ -317,6 +315,27 @@ function refRowLabel(row) {
   if (p.address) return p.address;
   if (typeof p.ordinal === 'number') return `Floor ${p.ordinal}`;
   return row.id.slice(0, 8);
+}
+
+/**
+ * Properties that exist on the row but aren't owned by any rendered form
+ * field (e.g. `display_point`, which the wizard auto-fills from the
+ * polygon centroid and the schema doesn't expose). These would otherwise
+ * be dropped when the form rebuilds the properties object on save.
+ * Callers merge this with their form-collected `cleanProps` so the form
+ * fields still take precedence (allowing clears).
+ */
+function preserveNonFormProps(properties, fields) {
+  const formFieldNames = new Set(fields.map((f) => f.name));
+  const out = {};
+  const props = properties || {};
+  for (const k of Object.keys(props)) {
+    if (formFieldNames.has(k)) continue;
+    const v = props[k];
+    if (v === null || v === undefined) continue;
+    out[k] = v;
+  }
+  return out;
 }
 
 /**

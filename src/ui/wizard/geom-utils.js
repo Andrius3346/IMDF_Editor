@@ -4,9 +4,21 @@
  * Centroid of a polygon's outer ring (ignores holes). Uses the standard
  * shoelace centroid formula. Returns [lng, lat]. Falls back to the
  * arithmetic mean for degenerate (zero-area) rings.
+ *
+ * Auto-detects input depth so callers can pass any of:
+ *   - bare ring:        `[[lng,lat], ...]`
+ *   - Polygon coords:   `[[[lng,lat], ...], ...]`
+ *   - MultiPolygon coords: `[[[[lng,lat], ...]]]`
+ * Geoman emits MultiPolygon for units in some configurations, which is why
+ * every unit's display_point was being saved as `[0,0]`: the old code took
+ * `coords[0]` once and saw an array of length 1 (just the outer ring),
+ * tripping the `length < 3` fallback.
  */
 export function polygonCentroid(coords) {
-  const ring = coords?.[0];
+  let ring = coords;
+  while (Array.isArray(ring) && Array.isArray(ring[0]) && Array.isArray(ring[0][0])) {
+    ring = ring[0];
+  }
   if (!Array.isArray(ring) || ring.length < 3) return [0, 0];
 
   // Trim the closing point if the ring is closed.

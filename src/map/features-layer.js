@@ -70,18 +70,6 @@ const LAYERS = [
       'line-dasharray': [3, 2],
     },
   },
-  // Address — small circle marker.
-  {
-    id: 'imdf-address-point',
-    type: 'circle',
-    filter: ['==', ['get', 'feature_type'], 'address'],
-    paint: {
-      'circle-radius': 6,
-      'circle-color': '#e64',
-      'circle-stroke-color': '#fff',
-      'circle-stroke-width': 2,
-    },
-  },
   // Selection outline — drawn last (on top), keyed off is_selected.
   {
     id: 'imdf-selection-line',

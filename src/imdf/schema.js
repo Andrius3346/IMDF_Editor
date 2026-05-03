@@ -1,8 +1,6 @@
 // Single source of truth for the editor's IMDF property + category vocabulary.
-// Sources: IMDF_specification/IMDF_Data_Model_Full.pdf (in-repo) plus the
-// Apple IMDF category register that the same spec links to. The full
-// vocabularies live here; the wizard's `categories.js` re-exports a
-// curated subset for the approachable creation flow.
+// Sources: IMDF_specification/IMDF_Data_Model_Full.pdf (in-repo) and the
+// OGC IMDF Community Standard 20-094 (https://docs.ogc.org/cs/20-094/).
 
 import { COUNTRY_OPTIONS } from '../ui/wizard/iso3166.js';
 
@@ -19,63 +17,58 @@ function humanize(v) {
   return tail ? `${cap} · ${tail}` : cap;
 }
 
-/** RESTRICTION-CATEGORY (3 values). */
+/** RESTRICTION-CATEGORY (2 values, OGC IMDF). */
 export const RESTRICTION_CATEGORY = [
-  'employeesonly', 'restricted', 'unspecified',
+  'employeesonly', 'restricted',
 ].map(opt);
 
-/** VENUE-CATEGORY (28 values, IMDF 1.0.0 + Apple register). */
+/** VENUE-CATEGORY (22 values, Apple IMDF register). */
 export const VENUE_CATEGORY = [
-  'airport', 'businesscampus', 'communitycenter', 'conventioncenter',
-  'education', 'entertainment', 'fitnesscenter', 'golfcourse', 'govbuilding',
-  'healthcare', 'hostel', 'hotel', 'lodging', 'museum', 'parking',
-  'parkingvenue', 'residentialhome', 'retail', 'shoppingcenter', 'stadium',
-  'station', 'storage', 'transit', 'transittransfer', 'transitwidget',
-  'university', 'unspecified', 'warehouse',
+  'airport', 'airport.intl', 'aquarium', 'businesscampus', 'casino',
+  'communitycenter', 'conventioncenter', 'governmentfacility',
+  'healthcarefacility', 'hotel', 'museum', 'parkingfacility', 'resort',
+  'retailstore', 'shoppingcenter', 'stadium', 'stripmall', 'theater',
+  'themepark', 'trainstation', 'transitstation', 'university',
 ].map(opt);
 
-/** BUILDING-CATEGORY (3 values). */
+/** BUILDING-CATEGORY (5 values, OGC IMDF). */
 export const BUILDING_CATEGORY = [
-  'parking', 'transit', 'unspecified',
+  'parking', 'transit', 'transit.bus', 'transit.train', 'unspecified',
 ].map(opt);
 
-/** FOOTPRINT-CATEGORY (3 values). */
+/** FOOTPRINT-CATEGORY (3 values, OGC IMDF). */
 export const FOOTPRINT_CATEGORY = [
   'aerial', 'ground', 'subterranean',
 ].map(opt);
 
-/** LEVEL-CATEGORY (13 values). */
+/** LEVEL-CATEGORY (9 values, OGC IMDF Community Standard 20-094). */
 export const LEVEL_CATEGORY = [
-  'arcade', 'basement', 'ground', 'ground.transit', 'levelhall', 'lobby',
-  'mezzanine', 'parking', 'parking.bicycle', 'retail', 'rooftop', 'transit',
-  'unspecified',
+  'arrivals', 'arrivals.domestic', 'arrivals.intl',
+  'departures', 'departures.domestic', 'departures.intl',
+  'parking', 'transit', 'unspecified',
 ].map(opt);
 
-/** UNIT-CATEGORY — full IMDF list. */
+/** UNIT-CATEGORY (OGC IMDF Community Standard 20-094). */
 export const UNIT_CATEGORY = [
-  'auditorium', 'balcony', 'brickandmortar', 'classroom', 'clinic',
-  'conferenceroom', 'courtyard', 'drivingrange', 'elevator', 'escalator',
-  'eventspace', 'exhibithall', 'fieldofplay', 'firstaid', 'fittingroom',
-  'foodservice', 'footbridge', 'garden', 'hallway', 'huddleroom', 'kitchen',
-  'laboratory', 'library', 'loadingdock', 'lobby', 'locker', 'mailroom',
-  'mothersroom', 'movietheater', 'nonpublic', 'office', 'opentobelow',
-  'parking', 'pathway', 'phoneroom', 'platform', 'playground',
-  'privatelounge', 'ramp', 'recreation', 'restroom', 'restroom.family',
-  'restroom.female', 'restroom.female.wheelchair', 'restroom.male',
-  'restroom.male.wheelchair', 'restroom.transgender',
+  'auditorium', 'brick', 'classroom', 'column', 'concrete', 'conferenceroom',
+  'drywall', 'elevator', 'escalator', 'fieldofplay', 'firstaid', 'fitnessroom',
+  'foodservice', 'footbridge', 'glass', 'huddleroom', 'kitchen', 'laboratory',
+  'library', 'lobby', 'lounge', 'mailroom', 'mothersroom', 'movietheater',
+  'movingwalkway', 'nonpublic', 'office', 'opentobelow', 'parking',
+  'phoneroom', 'platform', 'privatelounge', 'ramp', 'recreation', 'restroom',
+  'restroom.family', 'restroom.female', 'restroom.female.wheelchair',
+  'restroom.male', 'restroom.male.wheelchair', 'restroom.transgender',
   'restroom.transgender.wheelchair', 'restroom.unisex',
   'restroom.unisex.wheelchair', 'restroom.wheelchair', 'road', 'room',
-  'serverroom', 'shower', 'smokingarea', 'stage', 'stairs', 'steps',
-  'storage', 'structure', 'terrace', 'theater', 'unspecified', 'vegetation',
-  'walkway',
+  'serverroom', 'shower', 'smokingarea', 'stairs', 'steps', 'storage',
+  'structure', 'terrace', 'theater', 'unenclosedarea', 'unspecified',
+  'vegetation', 'waitingroom', 'walkway', 'walkway.island', 'wood',
 ].map(opt);
 
-/** ACCESSIBILITY-CATEGORY — IMDF accessibility values (best-effort). */
+/** ACCESSIBILITY-CATEGORY (10 values, OGC IMDF Community Standard 20-094). */
 export const ACCESSIBILITY_CATEGORY = [
-  'braille', 'controlledspeed', 'doublewheelchair', 'family', 'hearingloop',
-  'lever', 'magnetic', 'ramp', 'sign.large', 'sign.translation',
-  'singleseat', 'soundsignal', 'tactilemarkers', 'tactilemap',
-  'voicedirections', 'wheelchair',
+  'assisted.listening', 'braille', 'hearing', 'hearingloop',
+  'signlanginterpreter', 'tactilepaving', 'tdd', 'trs', 'volume', 'wheelchair',
 ].map(opt);
 
 // ---------------------------------------------------------------------------
@@ -126,8 +119,6 @@ export const SCHEMAS = {
       { name: 'hours',       type: 'text', hint: 'OSM opening_hours format (e.g. "Mo-Fr 08:00-18:00").' },
       { name: 'phone',       type: 'text' },
       { name: 'website',     type: 'text', placeholder: 'https://…' },
-      { name: 'display_point', type: 'display_point',
-        hint: 'IMDF requires this. Use Recompute to derive from the venue polygon centroid.' },
       { name: 'address_id',  type: 'ref', refType: 'address', required: true,
         label: 'Address' },
     ],
@@ -150,8 +141,6 @@ export const SCHEMAS = {
       { name: 'alt_name',      type: 'labels', label: 'Alternate name' },
       { name: 'category',      type: 'select', required: true, options: BUILDING_CATEGORY },
       { name: 'restriction',   type: 'select', options: RESTRICTION_CATEGORY, allowEmpty: true },
-      { name: 'display_point', type: 'display_point',
-        hint: 'Optional. Recompute uses the linked footprint centroid.' },
       { name: 'address_id',    type: 'ref', refType: 'address', label: 'Address' },
     ],
   },
@@ -159,15 +148,14 @@ export const SCHEMAS = {
   level: {
     label: 'Level',
     fields: [
-      { name: 'category',      type: 'select', required: true, options: LEVEL_CATEGORY },
+      { name: 'category',      type: 'select', options: LEVEL_CATEGORY },
       { name: 'restriction',   type: 'select', options: RESTRICTION_CATEGORY, allowEmpty: true },
       { name: 'outdoor',       type: 'checkbox' },
-      { name: 'ordinal',       type: 'number', required: true, step: 1,
+      { name: 'ordinal',       type: 'number', step: 1,
         hint: '0 = ground, 1 = first floor up, -1 = basement.' },
-      { name: 'name',          type: 'labels', required: true },
+      { name: 'name',          type: 'labels' },
       { name: 'short_name',    type: 'labels',
-        hint: 'IMDF spec lists this as required (LABELS [1..*]); leave empty only for legacy rows.' },
-      { name: 'display_point', type: 'display_point' },
+        hint: 'Optional short label, e.g. "G", "L1".' },
       { name: 'address_id',    type: 'ref', refType: 'address', label: 'Address' },
       { name: 'building_ids',  type: 'ref-multi', refType: 'building', label: 'Buildings' },
     ],
@@ -183,7 +171,6 @@ export const SCHEMAS = {
       { name: 'alt_name',      type: 'labels', label: 'Alternate name' },
       { name: 'level_id',      type: 'ref', refType: 'level', required: true,
         label: 'Level' },
-      { name: 'display_point', type: 'display_point' },
     ],
   },
 };

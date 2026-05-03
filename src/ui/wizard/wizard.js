@@ -144,7 +144,7 @@ async function stepVenue(addressId) {
     feature_type: 'venue',
     geometry,
     properties: {
-      category: 'education',
+      category: null,
       name: { en: '' },
       address_id: addressId,
       display_point: { type: 'Point', coordinates: centroid },
@@ -152,7 +152,7 @@ async function stepVenue(addressId) {
   });
   await refresh();
 
-  // 2e — Open the venue form (display_point hidden — auto-set above).
+  // 2e — Open the venue form.
   const result = await showFeatureForWizard({
     featureId: stub.id,
     step: {
@@ -160,7 +160,6 @@ async function stepVenue(addressId) {
       intro: 'Identify the venue. The name shown here will appear in the editor header. Pick a category from the full IMDF vocabulary.',
     },
     primaryLabel: 'Continue',
-    hideFields: ['display_point'],
     onCancel: async () => { await features.remove(stub.id); },
   });
   if (!result) return null;
@@ -198,7 +197,6 @@ async function stepBuilding() {
       intro: 'Building records are unlocated in IMDF — the footprint you draw in step 5 carries the actual outline. Pick a category and confirm the name.',
     },
     primaryLabel: 'Continue',
-    hideFields: ['display_point'],
     onCancel: async () => { await features.remove(stub.id); },
   });
   if (!result) return null;
@@ -218,7 +216,7 @@ async function stepLevel(ordinal) {
     feature_type: 'level',
     geometry: null,
     properties: {
-      category: 'ground',
+      category: 'unspecified',
       ordinal,
       name: { en: defaultFloorName(ordinal) },
       building_ids: [state.buildingId],
@@ -233,7 +231,7 @@ async function stepLevel(ordinal) {
       intro: 'Confirm the floor\'s name, ordinal, and category. The floor outline itself is drawn in step 5.',
     },
     primaryLabel: 'Continue',
-    hideFields: ['display_point', 'building_ids'],
+    hideFields: ['building_ids'],
     onCancel: async () => { await features.remove(stub.id); },
   });
   if (!result) return false;
@@ -309,13 +307,6 @@ async function stepFootprintAndLevelGeometry() {
       display_point: displayPoint,
     };
     await features.put(buildingRow);
-  }
-
-  // Back-fill the address Point at the same centroid (matches old behavior).
-  const addressRow = await features.get(state.addressId);
-  if (addressRow) {
-    addressRow.geometry = { type: 'Point', coordinates: centroid };
-    await features.put(addressRow);
   }
 
   // Tag this floor's raster with the level id so they're linked.
@@ -460,8 +451,9 @@ async function stepFloor(ordinal) {
   const state = activeState.getState();
   const centroid = polygonCentroid(geometry.coordinates);
 
-  // Stub level row → panel exposes the level schema (display_point and
-  // building_ids hidden — auto-set / linked).
+  // Stub level row → panel exposes the level schema (building_ids hidden
+  // — linked to the current building; display_point auto-set below and not
+  // in the schema).
   const stub = await features.put({
     feature_type: 'level',
     geometry,
@@ -483,7 +475,7 @@ async function stepFloor(ordinal) {
       intro: 'Set the floor name, ordinal, and any optional metadata.',
     },
     primaryLabel: 'Continue',
-    hideFields: ['display_point', 'building_ids'],
+    hideFields: ['building_ids'],
     onCancel: async () => { await features.remove(stub.id); },
   });
   if (!result) throw new Error('cancelled');
@@ -560,7 +552,6 @@ async function stepUnits() {
         intro: 'Pick a category from the full IMDF unit vocabulary. Add accessibility and alternate names if relevant.',
       },
       primaryLabel: 'Save room',
-      hideFields: ['display_point'],
       onCancel: async () => { await features.remove(stub.id); },
     });
     if (!result) {

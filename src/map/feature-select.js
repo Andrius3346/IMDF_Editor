@@ -40,7 +40,7 @@ export function installFeatureSelect(map) {
   // Cursor affordance over IMDF features.
   for (const layerId of [
     'imdf-footprint-fill', 'imdf-level-fill', 'imdf-unit-fill',
-    'imdf-venue-line', 'imdf-address-point',
+    'imdf-venue-line',
   ]) {
     map.on('mouseenter', layerId, () => { map.getCanvas().style.cursor = 'pointer'; });
     map.on('mouseleave', layerId, () => { map.getCanvas().style.cursor = ''; });

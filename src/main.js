@@ -49,11 +49,23 @@ async function onImportFile(ev) {
     const result = await importZip(file, { mapName: file.name.replace(/\.zip$/i, '') });
     console.log('Imported:', result);
     if (result.warnings.length) console.warn('Import warnings:', result.warnings);
+    setExportButtonVisible(true);
   } catch (e) {
     console.error('Import failed:', e);
     alert(`Import failed: ${e.message}`);
   } finally {
     await refreshAll();
+  }
+}
+
+async function onExportClick() {
+  try {
+    const name = (await manifestStore.getMapName()) ?? 'imdf-map';
+    await downloadZip(`${name}.zip`);
+    isDirty = false;
+  } catch (e) {
+    console.error('Export failed:', e);
+    alert(`Export failed: ${e.message}`);
   }
 }
 
@@ -75,6 +87,7 @@ async function finishMapAndReload() {
 
 async function presentWelcomeFlow() {
   setAddPlanButtonVisible(false);
+  setExportButtonVisible(false);
   const choice = await showWelcomeModal();
   if (choice === 'create') {
     const result = await startWizard({ map, refreshAll });
@@ -88,6 +101,11 @@ async function presentWelcomeFlow() {
 
 function setAddPlanButtonVisible(visible) {
   const btn = $('add-building-plan-btn');
+  if (btn) btn.hidden = !visible;
+}
+
+function setExportButtonVisible(visible) {
+  const btn = $('export-imdf-btn');
   if (btn) btn.hidden = !visible;
 }
 
@@ -105,6 +123,7 @@ async function init() {
   });
 
   $('import-input').addEventListener('change', onImportFile);
+  $('export-imdf-btn').addEventListener('click', onExportClick);
 
   // Map + Geoman + overlays. Failures here shouldn't crash the rest of the
   // page, so log and continue — the sidebar still works.

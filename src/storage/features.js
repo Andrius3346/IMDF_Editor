@@ -7,6 +7,7 @@
 //   { id, type: 'Feature', feature_type, geometry, properties }
 
 import { getDb, STORE } from './db.js';
+import { schemaFor } from '../imdf/schema.js';
 
 /** All 16 IMDF feature types, in spec order. Used for export iteration. */
 export const FEATURE_TYPES = Object.freeze([
@@ -38,6 +39,11 @@ export function toRow(feature) {
 
 /**
  * Project an IDB row to RFC 7946 GeoJSON Feature shape for export.
+ *
+ * Non-required schema fields that the user left blank are stripped from the
+ * stored row by the property-panel save path, but the IMDF spec expects every
+ * optional property to be present with `null` rather than omitted. Re-fill
+ * those nulls here so the exported GeoJSON is round-trip-faithful.
  */
 export function toFeature(row) {
   return {
@@ -45,8 +51,20 @@ export function toFeature(row) {
     type: 'Feature',
     feature_type: row.feature_type,
     geometry: row.geometry,
-    properties: row.properties,
+    properties: withSchemaNulls(row.feature_type, row.properties),
   };
+}
+
+function withSchemaNulls(featureType, properties) {
+  const schema = schemaFor(featureType);
+  const props = properties ?? {};
+  if (!schema) return props;
+  const out = { ...props };
+  for (const field of schema.fields) {
+    if (field.required) continue;
+    if (!(field.name in out)) out[field.name] = null;
+  }
+  return out;
 }
 
 export async function get(id) {
