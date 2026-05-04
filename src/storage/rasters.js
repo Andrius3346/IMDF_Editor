@@ -1,11 +1,10 @@
 // Raster overlay CRUD (georeferenced floor plans).
 //
-// Each row holds two Blobs:
-//   - source_blob  : original PNG (kept for re-georeferencing)
-//   - display_blob : PNG used by the map renderer
+// Each row holds one Blob:
+//   - display_blob : PNG used by the map renderer (downscaled at import)
 //
-// Source Blobs can be tens of megabytes, so callers should prefer
-// `getMeta(id)` (no source_blob) when they only need transform/bounds.
+// `getMeta(id)` returns the row without `display_blob` for callers that only
+// need transform/bounds (overlay panel, layer ordering, etc).
 
 import { getDb, STORE } from './db.js';
 
@@ -14,9 +13,10 @@ function uuid() {
 }
 
 /**
- * Create a new raster overlay row. Caller supplies blobs and georeferencing.
+ * Create a new raster overlay row. Caller supplies the display blob and
+ * georeferencing.
  *   create({
- *     name, source_format, source_blob, display_blob,
+ *     name, source_format, display_blob,
  *     gcps, transform, bounds, level_id?, opacity?, visible?, z_order?,
  *   })
  */
@@ -26,7 +26,6 @@ export async function create(input) {
     level_id: input.level_id ?? null,
     name: input.name,
     source_format: input.source_format,
-    source_blob: input.source_blob,
     display_blob: input.display_blob,
     gcps: input.gcps ?? [],
     transform: input.transform ?? [1, 0, 0, 1, 0, 0],
@@ -48,22 +47,14 @@ export async function get(id) {
 }
 
 /**
- * Get everything except the heavy source_blob. Use this to build the layer
+ * Get everything except the heavy display_blob. Use this to build the layer
  * list / overlay panel without loading megabytes per overlay.
  */
 export async function getMeta(id) {
   const row = await get(id);
   if (!row) return null;
-  const { source_blob, ...meta } = row;
+  const { display_blob, ...meta } = row;
   return meta;
-}
-
-/**
- * Get just the source PNG — call only when re-georeferencing.
- */
-export async function getSourceBlob(id) {
-  const row = await get(id);
-  return row ? row.source_blob : null;
 }
 
 /**
@@ -95,13 +86,13 @@ export async function remove(id) {
 }
 
 /**
- * List all overlays without their source_blob fields.
+ * List all overlays without their display_blob fields.
  */
 export async function listMeta() {
   const db = await getDb();
   const rows = await db.getAll(STORE.RASTERS);
   return rows
-    .map(({ source_blob, ...meta }) => meta)
+    .map(({ display_blob, ...meta }) => meta)
     .sort((a, b) => a.z_order - b.z_order);
 }
 

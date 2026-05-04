@@ -55,7 +55,6 @@ export async function importBuildingPlan(file, { map, refreshAll, onCommit, onCa
   const row = await rasters.create({
     name: name || file.name || `Building plan ${new Date().toISOString()}`,
     source_format: 'png',
-    source_blob: file,
     display_blob: blob,
     gcps, transform, bounds,
     opacity: 0.85, // slightly translucent so footprint is visible underneath

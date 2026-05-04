@@ -2,9 +2,10 @@
 //
 // Builds a Geoman polygon over the four image corners, programmatically
 // selects it, then enables drag / rotate / change as the user toggles the
-// floating toolbar. Real-time sync to the MapLibre image source uses a
-// requestAnimationFrame loop bracketed by Geoman's *start / *end events,
-// since the free build doesn't emit a continuous "during" event.
+// floating toolbar. The MapLibre image source is updated when each edit
+// gesture finishes — Geoman emits gm:dragend / gm:rotateend / gm:changeend,
+// and reading the corners once per gesture is enough for correct end-state
+// (a per-frame poll churned the GC for no visible benefit).
 
 import * as rasters from '../storage/rasters.js';
 import {
@@ -54,25 +55,26 @@ export async function startEditSession({ map, row, imgW, imgH, onCommit, onCance
     currentOpacity: row.opacity ?? 1,
     featureData,
     onCommit, onCancel,
-    rafId: 0,
+    geomanHandler: null,
   };
   active = session;
 
-  // Continuous rAF poll while the session is open. Reading a small JS object
-  // each frame is cheap and avoids guessing which Geoman start/end events
-  // fire for which mode (change/scale don't always emit the *start/*end pair
-  // we'd need to bracket the loop).
-  const pump = () => {
-    session.rafId = 0;
+  // Sync the raster to the polygon when each edit gesture finishes. Geoman
+  // emits *end events for drag, rotate, and change (vertex move); the scale
+  // path is driven directly by the slider's oninput below. A per-frame poll
+  // would just allocate corner arrays for nothing while the user is idle.
+  const onGeomanEnd = () => {
     if (active !== session) return;
     const corners = readCorners(session.featureData);
     if (corners && cornersChanged(corners, session.currentCorners)) {
       session.currentCorners = corners;
       setOverlayCoordinates(session.map, session.rowId, corners);
     }
-    session.rafId = requestAnimationFrame(pump);
   };
-  session.rafId = requestAnimationFrame(pump);
+  session.geomanHandler = onGeomanEnd;
+  map.on('gm:dragend', onGeomanEnd);
+  map.on('gm:rotateend', onGeomanEnd);
+  map.on('gm:changeend', onGeomanEnd);
 
   // Toolbar wiring.
   showToolbar(row.name);
@@ -133,7 +135,11 @@ export async function endActiveSession({ commit }) {
   if (!s) return;
   active = null;
 
-  if (s.rafId) cancelAnimationFrame(s.rafId);
+  if (s.geomanHandler) {
+    s.map.off('gm:dragend', s.geomanHandler);
+    s.map.off('gm:rotateend', s.geomanHandler);
+    s.map.off('gm:changeend', s.geomanHandler);
+  }
   await setEditMode(s.map, null);
   await setShapeMarkers(s.map, false);
   clearSelection(s.map);

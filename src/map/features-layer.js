@@ -98,6 +98,13 @@ const LAYERS = [
 
 let activeLevelId = null;
 let selectedFeatureId = null;
+// Cached rows from the last refreshFeaturesLayer() call. Selection / active-
+// level toggles only flip per-feature booleans, so they reuse the cache and
+// rebuild the FeatureCollection synchronously instead of round-tripping IDB.
+// Any IDB write path that needs the new state visible already calls
+// refreshFeaturesLayer afterwards (see main.js refreshAll), which refreshes
+// the cache.
+let cachedRows = null;
 
 export function mountFeaturesLayer(map) {
   if (map.getSource(SOURCE_ID)) return;
@@ -118,7 +125,17 @@ export function mountFeaturesLayer(map) {
  */
 export async function refreshFeaturesLayer(map) {
   if (!map.getSource(SOURCE_ID)) return;
-  const rows = await features.all();
+  cachedRows = await features.all();
+  applyCachedRows(map);
+}
+
+/**
+ * Push the currently cached rows to the GeoJSON source. Used by the cheap
+ * selection / active-level setters — no IDB hit.
+ */
+function applyCachedRows(map) {
+  if (!map.getSource(SOURCE_ID)) return;
+  const rows = cachedRows ?? [];
   const fc = {
     type: 'FeatureCollection',
     features: rows
@@ -157,8 +174,8 @@ function isActive(row) {
  */
 export function setActiveLevel(map, levelId) {
   activeLevelId = levelId;
-  // Trigger a re-read so the is_active property reflects the new active level.
-  refreshFeaturesLayer(map);
+  if (cachedRows) applyCachedRows(map);
+  else refreshFeaturesLayer(map);
 }
 
 export function getActiveLevel() {
@@ -171,7 +188,8 @@ export function getActiveLevel() {
  */
 export function setSelectedFeature(map, featureId) {
   selectedFeatureId = featureId;
-  refreshFeaturesLayer(map);
+  if (cachedRows) applyCachedRows(map);
+  else refreshFeaturesLayer(map);
 }
 
 export function getSelectedFeature() {
