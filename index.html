@@ -7,10 +7,11 @@
   <link rel="stylesheet" href="https://esm.sh/maplibre-gl@4/dist/maplibre-gl.css" />
   <link rel="stylesheet" href="https://esm.sh/@geoman-io/maplibre-geoman-free/dist/maplibre-geoman.css" />
   <style>
-    :root { color-scheme: light dark; --sidebar-w: 340px; }
+    :root { color-scheme: light dark; --sidebar-w: 340px; --form-w: 0px; }
     * { box-sizing: border-box; }
     html, body { margin: 0; height: 100%; font: 14px/1.4 system-ui, -apple-system, sans-serif; }
     body { display: grid; grid-template-rows: auto 1fr; min-height: 100%; }
+    body.form-panel-open { --form-w: 360px; }
     header {
       padding: 10px 16px; border-bottom: 1px solid #8884;
       display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
@@ -23,12 +24,14 @@
     button.primary:hover { background: #3a7ac2; }
 
     #layout {
-      display: grid; grid-template-columns: 1fr var(--sidebar-w);
+      position: relative;
+      display: grid; grid-template-columns: var(--form-w) 1fr var(--sidebar-w);
       min-height: 0; overflow: hidden;
     }
-    #map { position: relative; width: 100%; height: 100%; background: Canvas; }
+    #map { grid-column: 2; position: relative; width: 100%; height: 100%; background: Canvas; }
 
     aside#sidebar {
+      grid-column: 3;
       border-left: 1px solid #8884; overflow: auto; padding: 12px 14px;
     }
     /* Sidebar (currently only the Overlays panel) is hidden until the
@@ -68,7 +71,8 @@
     /* Floating georef toolbar */
     #georef-toolbar[hidden] { display: none !important; }
     #georef-toolbar {
-      position: absolute; top: 12px; left: 12px; z-index: 5;
+      position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+      z-index: 5;
       background: Canvas; border: 1px solid #8884; border-radius: 6px;
       padding: 8px 10px; box-shadow: 0 2px 8px #0003;
       display: flex; flex-direction: column; gap: 6px; min-width: 220px;
@@ -145,15 +149,18 @@
     .wizard-floating-prompt .hint { font-size: 12px; opacity: 0.8; margin: 0; }
     .wizard-floating-prompt .actions { display: flex; gap: 6px; justify-content: flex-end; }
 
-    /* Floor unit-loop panel — sits in the sidebar area */
+    /* Floor unit-loop panel — sits at the top centre, in the same slot as
+       the draw-outline prompt. Hidden while the user is drawing a room. */
     .wizard-floor-panel {
-      position: absolute; top: 12px; right: 12px; z-index: 6;
+      position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+      z-index: 6;
       background: Canvas; color: CanvasText;
       border: 1px solid #8884; border-radius: 6px;
       box-shadow: 0 2px 8px #0003;
       padding: 10px 14px; min-width: 220px;
       display: flex; flex-direction: column; gap: 6px;
     }
+    .wizard-floor-panel[hidden] { display: none !important; }
     .wizard-floor-panel .title { font-weight: 600; font-size: 13px; }
     .wizard-floor-panel .meta { font-size: 12px; opacity: 0.8; }
     .wizard-floor-panel .actions { display: flex; gap: 6px; flex-wrap: wrap; }
@@ -162,16 +169,17 @@
     .floor-list { width: 100%; }
     .floor-list th, .floor-list td { padding: 4px 8px 4px 0; font-size: 13px; }
 
-    /* Property panel — slides in over the map from the right when a
-       feature is selected. Sits on top of the right sidebar so the user
-       can still see the summary while editing. */
+    /* Property panel — slides in from the left when a feature is
+       selected. Lives in its own grid column (var(--form-w)) so the
+       basemap shrinks to the right instead of being overlaid. */
     .property-panel {
-      position: absolute; top: 0; right: 0; bottom: 0;
+      grid-column: 1;
+      position: absolute; top: 0; left: 0; bottom: 0;
       width: 360px; max-width: 90vw;
       background: Canvas; color: CanvasText;
-      border-left: 1px solid #8884;
-      box-shadow: -2px 0 12px #0004;
-      transform: translateX(100%);
+      border-right: 1px solid #8884;
+      box-shadow: 2px 0 12px #0004;
+      transform: translateX(-100%);
       transition: transform 160ms ease;
       z-index: 7;
       display: flex; flex-direction: column;
@@ -262,10 +270,10 @@
     .display-point-actions button { padding: 3px 8px; font-size: 12px; }
 
     @media (max-width: 720px) {
-      :root { --sidebar-w: 0px; }
-      #layout { grid-template-columns: 1fr; }
+      :root { --sidebar-w: 0px; --form-w: 0px; }
+      body.form-panel-open { --form-w: 0px; }
       aside#sidebar { display: none; }
-      .property-panel { width: 100vw; }
+      .property-panel { width: 100vw; max-width: none; }
     }
   </style>
 </head>
@@ -281,6 +289,7 @@
   </header>
 
   <div id="layout">
+    <aside id="property-panel" class="property-panel"></aside>
     <div id="map">
       <div id="georef-toolbar" hidden>
         <div class="title" id="georef-title">Georeference</div>
@@ -306,7 +315,6 @@
           <button id="georef-done" class="primary">Done</button>
         </div>
       </div>
-      <aside id="property-panel" class="property-panel"></aside>
     </div>
 
     <aside id="sidebar" hidden style="display: none">

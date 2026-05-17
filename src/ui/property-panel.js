@@ -55,6 +55,7 @@ export function hidePropertyPanel() {
   panel.querySelector('.pp-step-header')?.remove();
   currentFeatureId = null;
   activeWizardCancel = null;
+  document.body.classList.remove('form-panel-open');
   if (mounted?.map) setSelectedFeature(mounted.map, null);
 }
 
@@ -75,6 +76,7 @@ export async function showFeatureForEdit(featureId) {
 
   const panel = openPanel();
   removeStepHeader(panel);
+  panel.querySelector('.pp-close').hidden = false;
   setTitle(panel, row);
 
   const handles = await renderBody(panel, row);
@@ -130,6 +132,7 @@ export async function showFeatureForEdit(featureId) {
  */
 export async function showFeatureForWizard({
   featureId, step, primaryLabel = 'Continue', hideFields = [], onCancel,
+  keepOpen = false,
 }) {
   if (!mounted) return null;
   const row = await features.get(featureId);
@@ -142,6 +145,7 @@ export async function showFeatureForWizard({
 
   const panel = openPanel();
   setStepHeader(panel, step);
+  panel.querySelector('.pp-close').hidden = true;
   setTitle(panel, row);
 
   const handles = await renderBody(panel, row, { hideFields });
@@ -174,7 +178,11 @@ export async function showFeatureForWizard({
           };
           await features.put(updated);
           activeWizardCancel = null;
-          hidePropertyPanel();
+          // keepOpen: caller knows the next step will reuse this panel
+          // immediately, so skip the slide-out → slide-in jitter. The next
+          // showFeatureForWizard call overwrites header/body/actions in
+          // place (openPanel is idempotent when .open is already set).
+          if (!keepOpen) hidePropertyPanel();
           await mounted.refreshAll?.();
           resolve({ saved: true });
         } },
@@ -189,6 +197,7 @@ export async function showFeatureForWizard({
 function openPanel() {
   const panel = document.getElementById(PANEL_ID);
   panel.classList.add('open');
+  document.body.classList.add('form-panel-open');
   return panel;
 }
 

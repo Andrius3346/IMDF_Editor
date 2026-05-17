@@ -161,6 +161,7 @@ async function stepVenue(addressId) {
     },
     primaryLabel: 'Continue',
     onCancel: async () => { await features.remove(stub.id); },
+    keepOpen: true, // next step (Building) reuses the panel — avoid hide/show jitter
   });
   if (!result) return null;
 
@@ -198,6 +199,7 @@ async function stepBuilding() {
     },
     primaryLabel: 'Continue',
     onCancel: async () => { await features.remove(stub.id); },
+    keepOpen: true, // next step (Level) reuses the panel — avoid hide/show jitter
   });
   if (!result) return null;
 
@@ -516,6 +518,7 @@ async function stepUnits() {
     }
     // Add unit: draw → form → save.
     panel.setBusy(true);
+    panel.hide();
     const drawPrompt = showFloatingPrompt({
       title: `Floor ${formatOrdinal(state.currentOrdinal)} — draw room outline`,
       hint: 'Click around the room. Double-click to finish.',
@@ -526,6 +529,7 @@ async function stepUnits() {
     drawPrompt.cancelBtn.onclick = () => ctl.cancel();
     const geometry = await ctl.promise;
     drawPrompt.dismiss();
+    panel.show();
     panel.setBusy(false);
 
     if (!geometry) continue; // user cancelled the draw
@@ -722,6 +726,8 @@ function showFloorPanel({ title, levelId }) {
       addBtn.disabled = busy;
       doneBtn.disabled = busy || unitCount === 0;
     },
+    hide: () => { el.hidden = true; },
+    show: () => { el.hidden = false; },
     waitForAction: () => new Promise((r) => { resolveAction = r; }),
     dismiss: () => el.remove(),
   };
