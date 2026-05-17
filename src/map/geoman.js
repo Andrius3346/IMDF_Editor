@@ -46,21 +46,47 @@ export async function attachGeoman(map) {
 }
 
 /**
- * Make Geoman's polygon fill transparent across all gm_* sources, while
- * leaving the stroke (line layer) intact. The georeferencing overlay
- * polygon would otherwise paint a blue rectangle over the building plan.
+ * Make Geoman's polygon fill transparent across all gm_* sources, and pin
+ * every gm_* layer to the top of the layer stack. The georeferencing
+ * overlay polygon would otherwise paint a blue rectangle over the building
+ * plan, and any raster mounted after Geoman init would hide the in-progress
+ * draw line / edit handles underneath it.
  *
- * Re-applied on every styledata event so layers added later (e.g. when
- * Geoman re-creates layers on mode switches) stay transparent too.
+ * Re-applied on every styledata event so layers added later (Geoman
+ * re-creates layers on mode switches, rasters mount/unmount) stay correct.
+ * Guarded against re-entry because moveLayer / setPaintProperty fire
+ * styledata themselves.
  */
 function hideGeomanPolygonFill(map) {
+  let inApply = false;
   const apply = () => {
-    const layers = map.getStyle()?.layers ?? [];
-    for (const l of layers) {
-      if (l.type !== 'fill') continue;
-      const src = typeof l.source === 'string' ? l.source : null;
-      if (!src || !src.startsWith('gm_')) continue;
-      try { map.setPaintProperty(l.id, 'fill-opacity', 0); } catch { /* ignore */ }
+    if (inApply) return;
+    inApply = true;
+    try {
+      const layers = map.getStyle()?.layers ?? [];
+      const gmLayerIds = [];
+      for (const l of layers) {
+        const src = typeof l.source === 'string' ? l.source : null;
+        const isGm = (src && src.startsWith('gm_')) || (typeof l.id === 'string' && l.id.startsWith('gm_'));
+        if (!isGm) continue;
+        if (l.type === 'fill') {
+          try { map.setPaintProperty(l.id, 'fill-opacity', 0); } catch { /* ignore */ }
+        }
+        gmLayerIds.push(l.id);
+      }
+      // Only reorder when at least one gm_* layer is not already at the top
+      // of the stack — moving an already-topmost layer is wasted work and
+      // re-fires styledata.
+      const tailLen = gmLayerIds.length;
+      const tail = layers.slice(-tailLen).map((l) => l.id);
+      const alreadyOnTop = tailLen > 0 && gmLayerIds.every((id, i) => tail[i] === id);
+      if (!alreadyOnTop) {
+        for (const id of gmLayerIds) {
+          try { map.moveLayer(id); } catch { /* ignore */ }
+        }
+      }
+    } finally {
+      inApply = false;
     }
   };
   apply();
@@ -82,16 +108,23 @@ export async function addPolygonFeature(map, geojson) {
 
 export async function removePolygonFeature(map, featureData) {
   if (!featureData) return;
-  try {
-    if (typeof featureData.delete === 'function') {
-      await featureData.delete();
-      return;
+  // Belt-and-suspenders: in the free build, featureData.delete() can
+  // silently leave the entry in gm_main on some mode transitions. Always
+  // follow up with features.delete(id) so the polygon really goes away.
+  const id = featureData.id ?? featureData;
+  if (typeof featureData.delete === 'function') {
+    try { await featureData.delete(); }
+    catch (err) { console.error('Geoman: featureData.delete failed', id, err); }
+  }
+  if (map.gm?.features?.delete) {
+    try { await map.gm.features.delete(id); }
+    catch (err) {
+      // Second call may legitimately fail because the first one already
+      // succeeded — only surface unexpected error shapes.
+      if (err && !/not found|unknown|already/i.test(String(err.message ?? err))) {
+        console.error('Geoman: features.delete failed', id, err);
+      }
     }
-    if (map.gm?.features?.delete) {
-      await map.gm.features.delete(featureData.id ?? featureData);
-    }
-  } catch (err) {
-    console.warn('Geoman: remove feature failed', err);
   }
 }
 

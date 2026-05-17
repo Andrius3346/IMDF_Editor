@@ -2,10 +2,13 @@
 //
 // Builds a Geoman polygon over the four image corners, programmatically
 // selects it, then enables drag / rotate / change as the user toggles the
-// floating toolbar. The MapLibre image source is updated when each edit
-// gesture finishes — Geoman emits gm:dragend / gm:rotateend / gm:changeend,
-// and reading the corners once per gesture is enough for correct end-state
-// (a per-frame poll churned the GC for no visible benefit).
+// floating toolbar. The MapLibre image source is kept in sync with the
+// polygon by a requestAnimationFrame loop that runs whenever an edit mode
+// that can change geometry (drag / rotate / change) is enabled — the
+// toolbar's mode toggle drives ensureRafRunning/stopRaf. The free build
+// does not emit a reliable per-vertex *start event in change mode, so we
+// cannot bracket the loop on gm:*start; polling featureData.getGeoJson()
+// for the duration of the mode is the only way Resize stays live.
 
 import * as rasters from '../storage/rasters.js';
 import {
@@ -39,6 +42,11 @@ export async function startEditSession({ map, row, imgW, imgH, onCommit, onCance
     return;
   }
 
+  // Defensive: if a previous session left orphan features in gm_main
+  // (e.g. removePolygonFeature silently failed), purge them before adding
+  // the new edit polygon so the old blue rectangle doesn't linger.
+  await purgeGmMainFeatures(map);
+
   const polygonGeo = polygonFromCorners(startCorners);
   const featureData = await addPolygonFeature(map, polygonGeo);
   selectFeature(map, featureData.id);
@@ -55,15 +63,20 @@ export async function startEditSession({ map, row, imgW, imgH, onCommit, onCance
     currentOpacity: row.opacity ?? 1,
     featureData,
     onCommit, onCancel,
-    geomanHandler: null,
+    onGeomanEnd: null,
+    tick: null,
+    rafId: 0,
   };
   active = session;
 
-  // Sync the raster to the polygon when each edit gesture finishes. Geoman
-  // emits *end events for drag, rotate, and change (vertex move); the scale
-  // path is driven directly by the slider's oninput below. A per-frame poll
-  // would just allocate corner arrays for nothing while the user is idle.
-  const onGeomanEnd = () => {
+  // Live raster sync: poll featureData.getGeoJson() once per frame while an
+  // edit mode that can change geometry (drag / rotate / change) is enabled,
+  // so the image tracks the polygon continuously. The free build does not
+  // reliably emit gm:changestart for vertex drags, so we cannot bracket the
+  // loop on *start events — instead the toolbar's mode toggle below runs
+  // ensureRafRunning/stopRaf. Scale mode is driven by the slider's oninput
+  // (applyScale) and does not need this loop.
+  const syncFromFeature = () => {
     if (active !== session) return;
     const corners = readCorners(session.featureData);
     if (corners && cornersChanged(corners, session.currentCorners)) {
@@ -71,7 +84,20 @@ export async function startEditSession({ map, row, imgW, imgH, onCommit, onCance
       setOverlayCoordinates(session.map, session.rowId, corners);
     }
   };
-  session.geomanHandler = onGeomanEnd;
+  const tick = () => {
+    if (active !== session || !session.rafId) return;
+    syncFromFeature();
+    session.rafId = requestAnimationFrame(tick);
+  };
+  session.tick = tick;
+  // *end events stay as a safety net — they run a final settle in case the
+  // last frame's rAF was preempted by the gesture-end event. They no longer
+  // touch the rAF lifecycle; the toolbar mode toggle owns that.
+  const onGeomanEnd = () => {
+    if (active !== session) return;
+    syncFromFeature();
+  };
+  session.onGeomanEnd = onGeomanEnd;
   map.on('gm:dragend', onGeomanEnd);
   map.on('gm:rotateend', onGeomanEnd);
   map.on('gm:changeend', onGeomanEnd);
@@ -80,6 +106,7 @@ export async function startEditSession({ map, row, imgW, imgH, onCommit, onCance
   showToolbar(row.name);
   setActiveModeButton('drag');
   await setEditMode(map, 'drag');
+  ensureRafRunning(session);
 
   for (const btn of document.querySelectorAll('#georef-toolbar .modes button')) {
     btn.onclick = async () => {
@@ -88,6 +115,7 @@ export async function startEditSession({ map, row, imgW, imgH, onCommit, onCance
       if (uiMode === 'scale') {
         // Custom scale (Geoman free has no scale mode).
         await setEditMode(map, null);
+        stopRaf(session);
         enterScaleMode(session);
       } else {
         exitScaleMode(session);
@@ -95,6 +123,7 @@ export async function startEditSession({ map, row, imgW, imgH, onCommit, onCance
         await setEditMode(map, gmMode);
         // Re-select after a mode switch — some modes implicitly clear selection.
         selectFeature(map, session.featureData.id);
+        ensureRafRunning(session);
       }
     };
   }
@@ -135,10 +164,11 @@ export async function endActiveSession({ commit }) {
   if (!s) return;
   active = null;
 
-  if (s.geomanHandler) {
-    s.map.off('gm:dragend', s.geomanHandler);
-    s.map.off('gm:rotateend', s.geomanHandler);
-    s.map.off('gm:changeend', s.geomanHandler);
+  stopRaf(s);
+  if (s.onGeomanEnd) {
+    s.map.off('gm:dragend', s.onGeomanEnd);
+    s.map.off('gm:rotateend', s.onGeomanEnd);
+    s.map.off('gm:changeend', s.onGeomanEnd);
   }
   await setEditMode(s.map, null);
   await setShapeMarkers(s.map, false);
@@ -227,6 +257,52 @@ function polygonCenter(corners) {
   let lng = 0, lat = 0;
   for (const [x, y] of corners) { lng += x; lat += y; }
   return [lng / corners.length, lat / corners.length];
+}
+
+/**
+ * Start the per-frame live-sync rAF if it isn't already running for this
+ * session. Called by the toolbar mode toggle whenever drag/rotate/change
+ * becomes the active edit mode.
+ */
+function ensureRafRunning(session) {
+  if (active !== session) return;
+  if (session.rafId || !session.tick) return;
+  session.rafId = requestAnimationFrame(session.tick);
+}
+
+/**
+ * Cancel the live-sync rAF if running. Called when switching to scale
+ * (slider-driven) or null modes, and during session teardown.
+ */
+function stopRaf(session) {
+  if (session.rafId) {
+    cancelAnimationFrame(session.rafId);
+    session.rafId = 0;
+  }
+}
+
+/**
+ * Drop any leftover features from Geoman's main source before we add a new
+ * one. The free build's Features API does not expose a traversal method, so
+ * we query the underlying MapLibre source directly — every Geoman-managed
+ * feature carries a __gm_id property that we can feed back into
+ * map.gm.features.delete(). Dedupe via Set because the same feature can
+ * appear across tile boundaries.
+ */
+async function purgeGmMainFeatures(map) {
+  if (!map.gm?.features?.delete || !map.getSource('gm_main')) return;
+  const ids = new Set();
+  try {
+    const feats = map.querySourceFeatures('gm_main');
+    for (const f of feats) {
+      const id = f.properties?.__gm_id;
+      if (id !== undefined && id !== null) ids.add(id);
+    }
+  } catch { /* source not queryable yet — nothing to purge */ }
+  for (const id of ids) {
+    try { await map.gm.features.delete(id); }
+    catch { /* best effort — orphan id is harmless */ }
+  }
 }
 
 function readCorners(featureData) {

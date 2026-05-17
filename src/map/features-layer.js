@@ -195,3 +195,17 @@ export function setSelectedFeature(map, featureId) {
 export function getSelectedFeature() {
   return selectedFeatureId;
 }
+
+/**
+ * Toggle the entire imdf-* layer stack on/off. Used by the georeferencing
+ * session to clear the map of saved feature outlines while the user aligns
+ * a new raster — re-shown unconditionally when the session ends.
+ */
+export function setFeaturesLayerVisible(map, visible) {
+  const value = visible ? 'visible' : 'none';
+  for (const spec of LAYERS) {
+    if (map.getLayer(spec.id)) {
+      map.setLayoutProperty(spec.id, 'visibility', value);
+    }
+  }
+}

@@ -27,6 +27,11 @@ export async function mountOverlay(map, row) {
     coordinates: corners,
   });
 
+  // Insert the raster *below* the editable layers so the user's traced
+  // features and Geoman's draw preview / edit handles remain visible on top.
+  // Anchor preference: the bottom-most imdf-* layer, falling back to the
+  // first gm_* layer if features-layer hasn't mounted yet.
+  const beforeId = pickRasterAnchor(map);
   map.addLayer({
     id: layerId(row.id),
     type: 'raster',
@@ -38,7 +43,16 @@ export async function mountOverlay(map, row) {
     layout: {
       visibility: row.visible === false ? 'none' : 'visible',
     },
-  });
+  }, beforeId);
+}
+
+function pickRasterAnchor(map) {
+  if (map.getLayer('imdf-footprint-fill')) return 'imdf-footprint-fill';
+  const layers = map.getStyle()?.layers ?? [];
+  for (const l of layers) {
+    if (typeof l.id === 'string' && l.id.startsWith('gm_')) return l.id;
+  }
+  return undefined;
 }
 
 export function unmountOverlay(map, id) {

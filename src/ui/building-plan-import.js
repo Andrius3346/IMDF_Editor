@@ -6,7 +6,7 @@
 import * as rasters from '../storage/rasters.js';
 import { rasterize as readPng } from '../raster/render-png.js';
 import { initialCornersForCanvas, rowFromCorners } from '../raster/affine.js';
-import { mountOverlay } from '../map/raster-layers.js';
+import { mountOverlay, setOverlayVisibility } from '../map/raster-layers.js';
 import { startEditSession } from './georeference.js';
 
 const $ = (id) => document.getElementById(id);
@@ -62,6 +62,8 @@ export async function importBuildingPlan(file, { map, refreshAll, onCommit, onCa
     z_order,
   });
 
+  await hideOtherRasters(map, row.id);
+
   await mountOverlay(map, row);
   await refreshAll?.();
 
@@ -84,4 +86,14 @@ async function nextZOrder() {
   const list = await rasters.listMeta();
   if (!list.length) return 0;
   return list.reduce((max, r) => Math.max(max, r.z_order ?? 0), -1) + 1;
+}
+
+async function hideOtherRasters(map, exceptId) {
+  const all = await rasters.listMeta();
+  for (const r of all) {
+    if (r.id === exceptId) continue;
+    if (r.visible === false) continue;
+    await rasters.update(r.id, { visible: false });
+    setOverlayVisibility(map, r.id, false);
+  }
 }

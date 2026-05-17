@@ -77,12 +77,11 @@ function drawShape(map, shape, { snapTargets = [] } = {}) {
       }
 
       // Remove the temporary Geoman feature; the wizard renders its own.
-      try {
-        if (featureData?.delete) await featureData.delete();
-        else if (featureData?.id && map.gm?.features?.delete) {
-          await map.gm.features.delete(featureData.id);
-        }
-      } catch { /* ignore — best effort */ }
+      // Route through removePolygonFeature so both delete paths fire — the
+      // inline featureData.delete() alone silently leaks entries into gm_main
+      // in this Geoman build, and the leftover features later show interactive
+      // vertex markers during georef sessions.
+      await removePolygonFeature(map, featureData);
 
       finalize(geometry);
     };
