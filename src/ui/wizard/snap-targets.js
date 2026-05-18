@@ -59,6 +59,20 @@ export async function collectSnapTargetsForType(featureType, levelId, { excludeI
     await pushPolygons(targets, await features.byType('level'), excludeId);
     return targets;
   }
+  if (featureType === 'opening') {
+    // Doorways sit on unit walls / level boundaries — those are the natural
+    // anchors for endpoint snapping.
+    const targets = [];
+    if (levelId) {
+      const levelRow = await features.get(levelId);
+      if (levelRow && excludeId !== levelRow.id && hasPolygon(levelRow)) {
+        targets.push(levelRow.geometry);
+      }
+      const units = await features.byTypeAndLevel('unit', levelId);
+      await pushPolygons(targets, units, excludeId);
+    }
+    return targets;
+  }
   return [];
 }
 

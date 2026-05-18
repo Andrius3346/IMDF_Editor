@@ -71,6 +71,25 @@ export const ACCESSIBILITY_CATEGORY = [
   'signlanginterpreter', 'tactilepaving', 'tdd', 'trs', 'volume', 'wheelchair',
 ].map(opt);
 
+/** OPENING-CATEGORY (OGC IMDF Community Standard 20-094). */
+export const OPENING_CATEGORY = [
+  'automobile', 'bicycle', 'boat', 'breezeway', 'ladder',
+  'movingwalkway', 'parkingaccess', 'path', 'pedestrian',
+  'pedestrian.transit', 'ramp', 'stairs', 'steps', 'walkway',
+].map(opt);
+
+/** RELATIONSHIP-CATEGORY (OGC IMDF Community Standard 20-094). */
+export const RELATIONSHIP_CATEGORY = [
+  'elevator', 'escalator', 'movingwalkway', 'ramp', 'stairs',
+  'traversal', 'serving',
+].map(opt);
+
+/** RELATIONSHIP direction — IMDF spec page 1: "directed" or "undirected". */
+export const RELATIONSHIP_DIRECTION = [
+  { value: 'directed',   label: 'Directed'   },
+  { value: 'undirected', label: 'Undirected' },
+];
+
 // ---------------------------------------------------------------------------
 // Per-feature-type field schemas
 // ---------------------------------------------------------------------------
@@ -171,6 +190,29 @@ export const SCHEMAS = {
       { name: 'alt_name',      type: 'labels', label: 'Alternate name' },
       { name: 'level_id',      type: 'ref', refType: 'level', required: true,
         label: 'Level' },
+    ],
+  },
+
+  opening: {
+    label: 'Opening',
+    fields: [
+      { name: 'category',      type: 'select', required: true, options: OPENING_CATEGORY },
+      { name: 'accessibility', type: 'multi-select', options: ACCESSIBILITY_CATEGORY },
+      { name: 'name',          type: 'labels' },
+      { name: 'alt_name',      type: 'labels', label: 'Alternate name' },
+      { name: 'level_id',      type: 'ref', refType: 'level', required: true,
+        label: 'Level' },
+    ],
+  },
+
+  // origin / destination intentionally not in this form — the wizard sets them
+  // via click-pick on the map, and preserveNonFormProps in property-panel.js
+  // keeps the references intact across any later panel saves.
+  relationship: {
+    label: 'Relationship',
+    fields: [
+      { name: 'category',  type: 'select', required: true, options: RELATIONSHIP_CATEGORY },
+      { name: 'direction', type: 'select', required: true, options: RELATIONSHIP_DIRECTION },
     ],
   },
 };

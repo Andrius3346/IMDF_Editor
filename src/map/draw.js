@@ -42,6 +42,10 @@ export function drawPoint(map, options = {}) {
   return drawShape(map, 'point', options);
 }
 
+export function drawLine(map, options = {}) {
+  return drawShape(map, 'line', options);
+}
+
 // Geoman event names have drifted across versions; listen to all the
 // plausible ones for "draw finished" so we don't miss the resolution.
 const CREATE_EVENTS = ['gm:create', 'gm:drawend', 'pm:create'];

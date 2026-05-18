@@ -123,6 +123,16 @@ export async function showFeatureForEdit(featureId) {
   setActions(panel, [
     { label: 'Delete', className: 'pp-delete', onClick: async () => {
         if (!confirm(`Delete this ${row.feature_type}? This cannot be undone.`)) return;
+        // Dangling origin/destination refs break IMDF tools — when an
+        // opening/unit goes away, any relationship that pointed at it must
+        // go with it.
+        if (row.feature_type === 'opening' || row.feature_type === 'unit') {
+          const rels = await features.byType('relationship');
+          for (const r of rels) {
+            const refIds = [r.properties?.origin?.id, r.properties?.destination?.id];
+            if (refIds.includes(row.id)) await features.remove(r.id);
+          }
+        }
         await features.remove(row.id);
         hidePropertyPanel();
         await mounted.refreshAll?.();

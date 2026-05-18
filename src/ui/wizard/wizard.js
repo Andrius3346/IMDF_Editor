@@ -11,12 +11,14 @@ import { FOOTPRINT_CATEGORY } from './categories.js';
 import { polygonCentroid } from './geom-utils.js';
 import * as activeState from './active-state.js';
 
-import { drawPolygon } from '../../map/draw.js';
+import { drawPolygon, drawLine } from '../../map/draw.js';
 import { refreshFeaturesLayer, setActiveLevel } from '../../map/features-layer.js';
 import { importBuildingPlan } from '../building-plan-import.js';
 import { showFeatureForWizard } from '../property-panel.js';
 import { endWizardEditSession } from '../../map/feature-select.js';
-import { collectSnapTargetsForTypes } from './snap-targets.js';
+import { collectSnapTargetsForTypes, collectSnapTargetsForType } from './snap-targets.js';
+import { pickFeature } from '../../map/feature-picker.js';
+import { RELATIONSHIP_CATEGORY, RELATIONSHIP_DIRECTION } from '../../imdf/schema.js';
 
 let ctx = null; // { map, refreshAll }
 
@@ -79,6 +81,7 @@ async function runFlow() {
   // attach geometry to step-4 level, back-fill building.display_point.
   await stepFootprintAndLevelGeometry();
   await stepUnits();
+  await stepOpenings();
 
   // Per-floor loop for additional floors.
   while (true) {
@@ -512,8 +515,9 @@ async function stepFloor(ordinal) {
   setActiveLevel(ctx.map, stub.id);
   await refresh();
 
-  // Unit sub-loop.
+  // Unit sub-loop, then opening sub-loop.
   await stepUnits();
+  await stepOpenings();
 }
 
 async function stepUnits() {
@@ -582,6 +586,196 @@ async function stepUnits() {
     await refresh();
     panel.refreshCount();
   }
+}
+
+// ---------------------------------------------------------------------------
+// Per-floor opening sub-loop (runs after stepUnits)
+// ---------------------------------------------------------------------------
+
+async function stepOpenings() {
+  const state = activeState.getState();
+  const panel = showOpeningPanel({
+    title: `Floor ${formatOrdinal(state.currentOrdinal)} — add openings`,
+    levelId: state.currentLevelId,
+  });
+
+  while (true) {
+    await panel.refreshCount();
+    const action = await panel.waitForAction();
+    if (action === 'done') { panel.dismiss(); return; }
+
+    // Add opening: draw → form → click-pick → relationship modal.
+    panel.setBusy(true);
+    panel.hide();
+
+    const drawPrompt = showFloatingPrompt({
+      title: `Floor ${formatOrdinal(state.currentOrdinal)} — draw opening`,
+      hint: 'Click to add points along the doorway. Double-click to finish.',
+    });
+    const snap = await collectSnapTargetsForType('opening', state.currentLevelId);
+    await endWizardEditSession(ctx.map);
+    const ctl = drawLine(ctx.map, { snapTargets: snap });
+    drawPrompt.cancelBtn.onclick = () => ctl.cancel();
+    const geometry = await ctl.promise;
+    drawPrompt.dismiss();
+    panel.show();
+    panel.setBusy(false);
+
+    if (!geometry) continue;
+
+    const stub = await features.put({
+      feature_type: 'opening',
+      geometry,
+      properties: {
+        category: 'pedestrian',
+        name: { en: '' },
+        level_id: state.currentLevelId,
+      },
+    });
+    await refresh();
+
+    const result = await showFeatureForWizard({
+      featureId: stub.id,
+      step: {
+        current: 0, total: 0,
+        title: 'Opening details',
+        intro: 'Pick a category from the IMDF opening vocabulary. Then you will define which two features this opening connects.',
+      },
+      primaryLabel: 'Continue',
+      hideFields: ['level_id'],
+      onCancel: async () => { await features.remove(stub.id); },
+    });
+    if (!result) {
+      await refresh();
+      continue;
+    }
+
+    panel.hide();
+    const ok = await captureRelationshipForOpening();
+    panel.show();
+    if (!ok) {
+      // Cascade: an opening without its paired relationship breaks the
+      // wizard's contract, so unwind both.
+      await features.remove(stub.id);
+      await refresh();
+    }
+  }
+}
+
+async function captureRelationshipForOpening() {
+  // The floating prompt's Cancel routes through the same Escape pathway the
+  // picker already listens to — keeps pickFeature's signature minimal.
+  const fireEscape = () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+
+  const originPrompt = showFloatingPrompt({
+    title: 'Pick the origin feature',
+    hint: 'Click a unit or opening on the map. Esc to cancel.',
+  });
+  originPrompt.cancelBtn.onclick = fireEscape;
+  const origin = await pickFeature(ctx.map, { types: ['unit', 'opening'] });
+  originPrompt.dismiss();
+  if (!origin) return false;
+
+  const destPrompt = showFloatingPrompt({
+    title: 'Pick the destination feature',
+    hint: 'Click a unit or opening on the map. Esc to cancel.',
+  });
+  destPrompt.cancelBtn.onclick = fireEscape;
+  const destination = await pickFeature(ctx.map, { types: ['unit', 'opening'] });
+  destPrompt.dismiss();
+  if (!destination) return false;
+
+  const summary = await summarizeRefs(origin, destination);
+  const form = await showModal({
+    title: 'Define relationship',
+    intro: summary,
+    fields: [
+      { name: 'category',  type: 'select', required: true, options: RELATIONSHIP_CATEGORY,
+        allowEmpty: true },
+      { name: 'direction', type: 'select', required: true, options: RELATIONSHIP_DIRECTION,
+        allowEmpty: true },
+    ],
+    actions: [
+      { id: 'cancel', label: 'Cancel', validate: false },
+      { id: 'save',   label: 'Save',   primary: true },
+    ],
+    dismissable: false,
+  });
+  if (!form || form.actionId !== 'save') return false;
+
+  await features.put({
+    feature_type: 'relationship',
+    geometry: null,
+    properties: {
+      category:  form.values.category,
+      direction: form.values.direction,
+      origin,
+      destination,
+    },
+  });
+  await refresh();
+  return true;
+}
+
+async function summarizeRefs(origin, destination) {
+  const [o, d] = await Promise.all([
+    features.get(origin.id),
+    features.get(destination.id),
+  ]);
+  return `Origin: ${refLabel(o, origin)}\nDestination: ${refLabel(d, destination)}`;
+}
+
+function refLabel(row, ref) {
+  if (!row) return `${ref.feature_type} · (deleted)`;
+  const p = row.properties || {};
+  const name = p.name?.en || Object.values(p.name || {})[0] || row.id.slice(0, 8);
+  return `${row.feature_type} · ${name}`;
+}
+
+function showOpeningPanel({ title, levelId }) {
+  const mapEl = document.getElementById('map');
+  const el = document.createElement('div');
+  el.className = 'wizard-floor-panel';
+  el.innerHTML = `
+    <div class="title"></div>
+    <div class="meta"></div>
+    <div class="actions">
+      <button type="button" class="add primary">+ Add opening</button>
+      <button type="button" class="done">Done with this floor</button>
+    </div>
+  `;
+  el.querySelector('.title').textContent = title;
+  mapEl.appendChild(el);
+
+  const addBtn = el.querySelector('.add');
+  const doneBtn = el.querySelector('.done');
+  const meta = el.querySelector('.meta');
+
+  let resolveAction = null;
+  let openingCount = 0;
+
+  const refreshCount = async () => {
+    const all = await features.byTypeAndLevel('opening', levelId);
+    openingCount = all.length;
+    meta.textContent = `Openings on this floor: ${openingCount}`;
+    doneBtn.disabled = openingCount === 0;
+    doneBtn.title = openingCount === 0 ? 'Add at least one opening before continuing.' : '';
+  };
+
+  addBtn.onclick = () => resolveAction?.('add');
+  doneBtn.onclick = () => { if (!doneBtn.disabled) resolveAction?.('done'); };
+
+  return {
+    refreshCount,
+    setBusy: (busy) => {
+      addBtn.disabled = busy;
+      doneBtn.disabled = busy || openingCount === 0;
+    },
+    hide: () => { el.hidden = true; },
+    show: () => { el.hidden = false; },
+    waitForAction: () => new Promise((r) => { resolveAction = r; }),
+    dismiss: () => el.remove(),
+  };
 }
 
 // ---------------------------------------------------------------------------

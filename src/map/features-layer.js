@@ -70,6 +70,17 @@ const LAYERS = [
       'line-dasharray': [3, 2],
     },
   },
+  // Opening — red solid line, distinct from unit outline.
+  {
+    id: 'imdf-opening-line',
+    type: 'line',
+    filter: ['==', ['get', 'feature_type'], 'opening'],
+    paint: {
+      'line-color': '#d63b3b',
+      'line-width': ['case', ['get', 'is_active'], 3, 1.5],
+      'line-opacity': ['case', ['get', 'is_active'], 1, 0.5],
+    },
+  },
   // Selection outline — drawn last (on top), keyed off is_selected.
   {
     id: 'imdf-selection-line',
@@ -164,7 +175,9 @@ function applyCachedRows(map) {
 function isActive(row) {
   if (activeLevelId === null) return true;
   if (row.feature_type === 'level') return row.id === activeLevelId;
-  if (row.feature_type === 'unit') return row.level_id === activeLevelId;
+  if (row.feature_type === 'unit' || row.feature_type === 'opening') {
+    return row.level_id === activeLevelId;
+  }
   return true; // footprint / venue / address always render at full opacity
 }
 
