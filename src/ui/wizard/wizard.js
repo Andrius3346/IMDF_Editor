@@ -15,6 +15,8 @@ import { drawPolygon } from '../../map/draw.js';
 import { refreshFeaturesLayer, setActiveLevel } from '../../map/features-layer.js';
 import { importBuildingPlan } from '../building-plan-import.js';
 import { showFeatureForWizard } from '../property-panel.js';
+import { endWizardEditSession } from '../../map/feature-select.js';
+import { collectSnapTargetsForTypes } from './snap-targets.js';
 
 let ctx = null; // { map, refreshAll }
 
@@ -42,6 +44,11 @@ export async function startWizard({ map, refreshAll }) {
   } catch (err) {
     console.error('Wizard aborted:', err);
   } finally {
+    // Flush any in-flight vertex-edit session before tearing down the wizard
+    // so the user's last drag persists (geometry + auto display_point).
+    try { await endWizardEditSession(map); } catch (err) {
+      console.warn('Wizard teardown: vertex-edit flush failed', err);
+    }
     activeState.update({ active: false });
     hideHeaderActions(false);
     document.body.classList.remove('wizard-active');
@@ -132,6 +139,11 @@ async function stepVenue(addressId) {
     title: 'Step 2 of 5 — Draw the venue boundary',
     hint: 'Trace the venue\'s formal property boundary. Double-click the last point to finish.',
   });
+  // Commit any in-flight vertex edit before opening the draw — leaving an
+  // edit session live alongside an active draw confuses Geoman (handles
+  // appear on top of the draw preview and the first draw click can be
+  // captured as a vertex drag).
+  await endWizardEditSession(ctx.map);
   const ctl = drawPolygon(ctx.map);
   prompt.cancelBtn.onclick = () => ctl.cancel();
   const geometry = await ctl.promise;
@@ -267,8 +279,9 @@ async function stepFootprintAndLevelGeometry() {
     title: 'Step 5 of 5 — Draw the floor extent',
     hint: 'Trace the ground floor outline. Double-click the last point to finish.',
   });
+  await endWizardEditSession(ctx.map);
   const ctl = drawPolygon(ctx.map, {
-    snapTargets: await collectSnapTargets(['venue']),
+    snapTargets: await collectSnapTargetsForTypes(['venue']),
   });
   prompt.cancelBtn.onclick = () => ctl.cancel();
   const geometry = await ctl.promise;
@@ -441,8 +454,9 @@ async function stepFloor(ordinal) {
     title: `Floor ${formatOrdinal(ordinal)} — draw level outline`,
     hint: 'Click around the floor outline as it appears in the plan. Double-click to finish.',
   });
+  await endWizardEditSession(ctx.map);
   const ctl = drawPolygon(ctx.map, {
-    snapTargets: await collectSnapTargets(['footprint', 'venue', 'level']),
+    snapTargets: await collectSnapTargetsForTypes(['footprint', 'venue', 'level']),
   });
   prompt.cancelBtn.onclick = () => ctl.cancel();
   const geometry = await ctl.promise;
@@ -525,6 +539,7 @@ async function stepUnits() {
     });
     // Snap to the level outline + any units already drawn on this floor.
     const unitSnap = await collectUnitSnapTargets(state.currentLevelId);
+    await endWizardEditSession(ctx.map);
     const ctl = drawPolygon(ctx.map, { snapTargets: unitSnap });
     drawPrompt.cancelBtn.onclick = () => ctl.cancel();
     const geometry = await ctl.promise;
@@ -743,26 +758,11 @@ async function refresh() {
 }
 
 /**
- * Collect saved feature geometries to use as snap anchors for the next
- * draw. Geoman's snapping helper only sees features in its own gm_main
- * source, so we briefly re-import these for the duration of each draw
- * (see src/map/draw.js).
+ * Snap-target collection lives in ./snap-targets.js so both the wizard and the
+ * vertex-edit handlers (feature-select + property panel) share one definition.
  */
-async function collectSnapTargets(featureTypes) {
-  const out = [];
-  for (const t of featureTypes) {
-    const rows = await features.byType(t);
-    for (const r of rows) {
-      if (r.geometry && (r.geometry.type === 'Polygon' || r.geometry.type === 'MultiPolygon')) {
-        out.push(r.geometry);
-      }
-    }
-  }
-  return out;
-}
-
 async function collectUnitSnapTargets(levelId) {
-  const targets = await collectSnapTargets(['footprint']);
+  const targets = await collectSnapTargetsForTypes(['footprint']);
   const levelRow = await features.get(levelId);
   if (levelRow?.geometry) targets.push(levelRow.geometry);
   const units = await features.byTypeAndLevel('unit', levelId);

@@ -197,6 +197,20 @@ export function getSelectedFeature() {
 }
 
 /**
+ * Mutate a cached row's geometry in place and re-render the source. The
+ * in-form vertex-edit session calls this on every rAF tick so the colored
+ * fill follows the live polygon edits without an IDB write per frame.
+ * Persistence happens once on form save.
+ */
+export function patchCachedFeatureGeometry(map, featureId, geometry) {
+  if (!cachedRows) return;
+  const row = cachedRows.find((r) => r.id === featureId);
+  if (!row) return;
+  row.geometry = geometry;
+  applyCachedRows(map);
+}
+
+/**
  * Toggle the entire imdf-* layer stack on/off. Used by the georeferencing
  * session to clear the map of saved feature outlines while the user aligns
  * a new raster — re-shown unconditionally when the session ends.

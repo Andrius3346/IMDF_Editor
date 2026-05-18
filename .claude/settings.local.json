@@ -7,7 +7,10 @@
       "Bash(Get-ChildItem -Path \"C:\\\\Vu\\\\Bakalauras\\\\IMDF_Editor\\\\IMDF_Editor\" -Recurse -Directory)",
       "Bash(Select-Object -ExpandProperty FullName)",
       "WebFetch(domain:docs.ogc.org)",
-      "WebFetch(domain:register.apple.com)"
+      "WebFetch(domain:register.apple.com)",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:esm.sh)"
     ]
   }
 }

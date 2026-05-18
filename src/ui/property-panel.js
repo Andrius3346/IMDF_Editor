@@ -12,7 +12,14 @@ import * as features from '../storage/features.js';
 import { schemaFor } from '../imdf/schema.js';
 import { renderField, collectAndValidate } from './wizard/forms.js';
 import { polygonCentroid } from './wizard/geom-utils.js';
-import { setSelectedFeature } from '../map/features-layer.js';
+import { collectSnapTargetsForType } from './wizard/snap-targets.js';
+import { setSelectedFeature, patchCachedFeatureGeometry } from '../map/features-layer.js';
+import { startVertexEditSession } from '../map/vertex-edit.js';
+// endWizardEditSession is imported eagerly even though feature-select.js also
+// imports from this module — both directions are named function imports that
+// are only invoked inside async handlers, so native ESM resolves the cycle
+// without any top-level evaluation order issues.
+import { endWizardEditSession } from '../map/feature-select.js';
 
 const PANEL_ID = 'property-panel';
 
@@ -21,6 +28,9 @@ let currentFeatureId = null;
 // Set when the panel is in wizard mode. Holds the abort callback that the
 // pp-close button, the Esc key, and the Cancel action should all call.
 let activeWizardCancel = null;
+// Set when showFeatureForEdit started a vertex-edit session for a non-level
+// polygon. hidePropertyPanel and re-entry into showFeatureForEdit end it.
+let activeEditSession = null;
 
 export function mountPropertyPanel({ map, refreshAll }) {
   mounted = { map, refreshAll };
@@ -53,6 +63,10 @@ export function hidePropertyPanel() {
   panel.querySelector('.pp-actions').hidden = true;
   panel.querySelector('.pp-actions').innerHTML = '';
   panel.querySelector('.pp-step-header')?.remove();
+  if (activeEditSession) {
+    activeEditSession.end();
+    activeEditSession = null;
+  }
   currentFeatureId = null;
   activeWizardCancel = null;
   document.body.classList.remove('form-panel-open');
@@ -70,6 +84,10 @@ export async function showFeatureForEdit(featureId) {
     console.warn('Property panel: feature not found', featureId);
     return;
   }
+  if (activeEditSession) {
+    await activeEditSession.end();
+    activeEditSession = null;
+  }
   currentFeatureId = featureId;
   activeWizardCancel = null;
   setSelectedFeature(mounted.map, featureId);
@@ -82,6 +100,25 @@ export async function showFeatureForEdit(featureId) {
   const handles = await renderBody(panel, row);
   if (!handles) return; // raw-JSON fallback
 
+  // Levels stay vertex-locked even when the user clicks them — the wizard's
+  // step-5 floor extent becomes both the footprint and the ground-level
+  // outline, and we don't want the two to drift independently.
+  if (row.feature_type !== 'level'
+      && (row.geometry?.type === 'Polygon' || row.geometry?.type === 'MultiPolygon')) {
+    const snapTargets = await collectSnapTargetsForType(
+      row.feature_type, row.level_id ?? null, { excludeId: row.id },
+    );
+    activeEditSession = await startVertexEditSession(mounted.map, {
+      geometry: row.geometry,
+      snapTargets,
+      onLiveGeometry: (g) => {
+        row.geometry = g; // mutate in place so the display_point recompute closure sees it
+        patchCachedFeatureGeometry(mounted.map, row.id, g);
+      },
+    });
+  }
+
+  const originalGeometry = row.geometry;
   const { fields, fieldEls } = handles;
   setActions(panel, [
     { label: 'Delete', className: 'pp-delete', onClick: async () => {
@@ -98,12 +135,48 @@ export async function showFeatureForEdit(featureId) {
         const cleanProps = stripEmpty(result.values);
         const passthrough = preserveNonFormProps(row.properties, fields);
         const merged = { ...passthrough, ...cleanProps };
-        const updated = { ...row, properties: merged, level_id: merged.level_id ?? null };
+        const finalGeometry = activeEditSession?.getLive() ?? row.geometry;
+        // Auto-recompute display_point if the geometry actually changed via
+        // vertex editing. The Recompute-from-geometry button is no longer
+        // surfaced in the form (display_point is meant to be auto-filled);
+        // without this, every shape edit would leave display_point pointing
+        // at the old centroid.
+        if (finalGeometry !== originalGeometry
+            && !geometriesEqual(finalGeometry, originalGeometry)) {
+          const dp = computeDisplayPoint(finalGeometry);
+          if (dp) merged.display_point = dp;
+        }
+        const updated = {
+          ...row,
+          geometry: finalGeometry,
+          properties: merged,
+          level_id: merged.level_id ?? null,
+        };
         await features.put(updated);
         await mounted.refreshAll?.();
         await showFeatureForEdit(row.id); // re-render with saved state
       } },
   ]);
+}
+
+function computeDisplayPoint(geometry) {
+  if (!geometry) return null;
+  if (geometry.type === 'Polygon') {
+    return { type: 'Point', coordinates: polygonCentroid(geometry.coordinates) };
+  }
+  if (geometry.type === 'MultiPolygon' && Array.isArray(geometry.coordinates?.[0])) {
+    return { type: 'Point', coordinates: polygonCentroid(geometry.coordinates[0]) };
+  }
+  if (geometry.type === 'Point') {
+    return { type: 'Point', coordinates: geometry.coordinates.slice() };
+  }
+  return null;
+}
+
+function geometriesEqual(a, b) {
+  if (a === b) return true;
+  if (!a || !b || a.type !== b.type) return false;
+  return JSON.stringify(a.coordinates) === JSON.stringify(b.coordinates);
 }
 
 // ---------------------------------------------------------------------------
@@ -168,11 +241,28 @@ export async function showFeatureForWizard({
       { label: primaryLabel, className: 'pp-save primary', onClick: async () => {
           const result = collectAndValidate(fields, fieldEls);
           if (!result.ok) return;
+          // Commit any in-flight wizard vertex edit before the wizard's
+          // refreshAll re-reads IDB. Without this, refreshFeaturesLayer
+          // clobbers the IMDF source's live geometry back to the pre-edit
+          // row, and the rAF sync does not re-fire (Geoman's polygon stops
+          // changing once the user releases the vertex), leaving two
+          // polygons visible until the next session-committing step.
+          await endWizardEditSession(mounted.map);
+          // Re-read in case the session belonged to this very feature —
+          // the commit just wrote its new geometry + auto display_point,
+          // and we must not spread the stale `row.geometry` on top of it.
+          const freshRow = await features.get(featureId);
+          if (!freshRow) {
+            activeWizardCancel = null;
+            hidePropertyPanel();
+            resolve(null);
+            return;
+          }
           const cleanProps = stripEmpty(result.values);
-          const passthrough = preserveNonFormProps(row.properties, fields);
+          const passthrough = preserveNonFormProps(freshRow.properties, fields);
           const merged = { ...passthrough, ...cleanProps };
           const updated = {
-            ...row,
+            ...freshRow,
             properties: merged,
             level_id: merged.level_id ?? null,
           };
