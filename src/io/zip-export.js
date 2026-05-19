@@ -6,6 +6,10 @@
 import { zipSync, strToU8 } from 'https://esm.sh/fflate@0.8';
 import { byType, toFeature, FEATURE_TYPES } from '../storage/features.js';
 import { getManifest, newManifest } from '../storage/manifest.js';
+import {
+  computeExportDisplayPoint,
+  buildFootprintByBuildingIndex,
+} from './display-point.js';
 
 /**
  * Build the zip in memory and return it as a Blob. Does NOT trigger a
@@ -26,18 +30,39 @@ export async function buildZip(opts = {}) {
     'manifest.json': strToU8(JSON.stringify(manifest, null, 2)),
   };
 
+  // Footprints are fetched once and reused: buildings (which have null
+  // geometry) need them to compute display_point via building_ids lookup.
+  const footprintRows = await byType('footprint');
+  const footprintByBuilding = buildFootprintByBuildingIndex(footprintRows);
+
   for (const featureType of FEATURE_TYPES) {
-    const rows = await byType(featureType);
+    const rows = featureType === 'footprint' ? footprintRows : await byType(featureType);
     if (rows.length === 0 && !includeEmptyCollections) continue;
     const fc = {
       type: 'FeatureCollection',
-      features: rows.map(toFeature),
+      features: rows.map((row) => {
+        const feature = toFeature(row);
+        const dp = displayPointFor(featureType, row, footprintByBuilding);
+        if (dp) feature.properties = { ...feature.properties, display_point: dp };
+        return feature;
+      }),
     };
     archive[`${featureType}.geojson`] = strToU8(JSON.stringify(fc, null, 2));
   }
 
   const bytes = zipSync(archive, { level: 6 });
   return new Blob([bytes], { type: 'application/zip' });
+}
+
+function displayPointFor(featureType, row, footprintByBuilding) {
+  if (featureType === 'building') {
+    const fp = footprintByBuilding.get(row.id);
+    return fp ? computeExportDisplayPoint(fp.geometry) : null;
+  }
+  if (featureType === 'level' || featureType === 'unit' || featureType === 'footprint') {
+    return computeExportDisplayPoint(row.geometry);
+  }
+  return null;
 }
 
 /**

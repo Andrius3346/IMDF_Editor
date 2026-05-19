@@ -71,11 +71,10 @@ export const ACCESSIBILITY_CATEGORY = [
   'signlanginterpreter', 'tactilepaving', 'tdd', 'trs', 'volume', 'wheelchair',
 ].map(opt);
 
-/** OPENING-CATEGORY (OGC IMDF Community Standard 20-094). */
+/** OPENING-CATEGORY (OGC IMDF Community Standard 20-094, curated subset). */
 export const OPENING_CATEGORY = [
-  'automobile', 'bicycle', 'boat', 'breezeway', 'ladder',
-  'movingwalkway', 'parkingaccess', 'path', 'pedestrian',
-  'pedestrian.transit', 'ramp', 'stairs', 'steps', 'walkway',
+  'automobile', 'bicycle', 'emergencyexit', 'pedestrian',
+  'pedestrian.principal', 'pedestrian.transit', 'service',
 ].map(opt);
 
 /** RELATIONSHIP-CATEGORY (OGC IMDF Community Standard 20-094). */

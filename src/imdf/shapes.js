@@ -235,9 +235,9 @@
  * @typedef {object} RelationshipProperties
  * @property {string} category                    // e.g. 'traversal', 'serving'
  * @property {string=} direction                  // 'directed' | 'undirected'
- * @property {{ id: UUID, feature_type: FeatureType }} origin
+ * @property {{ id: UUID, feature_type: FeatureType } | null} origin
  * @property {{ id: UUID, feature_type: FeatureType }=} intermediary
- * @property {{ id: UUID, feature_type: FeatureType }} destination
+ * @property {{ id: UUID, feature_type: FeatureType } | null} destination
  * @property {object=} hours
  */
 

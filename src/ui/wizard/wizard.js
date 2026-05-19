@@ -662,28 +662,18 @@ async function stepOpenings() {
   }
 }
 
+const ENDPOINT_CANCELLED = Symbol('cancelled');
+
 async function captureRelationshipForOpening() {
-  // The floating prompt's Cancel routes through the same Escape pathway the
-  // picker already listens to — keeps pickFeature's signature minimal.
-  const fireEscape = () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+  const origin = await pickRelationshipEndpoint('origin');
+  if (origin === ENDPOINT_CANCELLED) return false;
 
-  const originPrompt = showFloatingPrompt({
-    title: 'Pick the origin feature',
-    hint: 'Click a unit or opening on the map. Esc to cancel.',
-  });
-  originPrompt.cancelBtn.onclick = fireEscape;
-  const origin = await pickFeature(ctx.map, { types: ['unit', 'opening'] });
-  originPrompt.dismiss();
-  if (!origin) return false;
+  const destination = await pickRelationshipEndpoint('destination');
+  if (destination === ENDPOINT_CANCELLED) return false;
 
-  const destPrompt = showFloatingPrompt({
-    title: 'Pick the destination feature',
-    hint: 'Click a unit or opening on the map. Esc to cancel.',
-  });
-  destPrompt.cancelBtn.onclick = fireEscape;
-  const destination = await pickFeature(ctx.map, { types: ['unit', 'opening'] });
-  destPrompt.dismiss();
-  if (!destination) return false;
+  // Degenerate: both endpoints null. Treat as cancel so the cascade in
+  // stepOpenings() deletes the just-created opening.
+  if (origin === null && destination === null) return false;
 
   const summary = await summarizeRefs(origin, destination);
   const form = await showModal({
@@ -717,15 +707,45 @@ async function captureRelationshipForOpening() {
   return true;
 }
 
+/**
+ * Run one endpoint pick. Resolves to:
+ *   - a ref object `{ id, feature_type }` when the user clicks on the map,
+ *   - `null` when the user clicks the "set to none (outside)" button,
+ *   - the `ENDPOINT_CANCELLED` sentinel when the user clicks Cancel or hits Esc.
+ *
+ * Both buttons abort `pickFeature` by dispatching Escape; the `outcome`
+ * variable, set synchronously before the dispatch, disambiguates which.
+ */
+async function pickRelationshipEndpoint(role) {
+  const fireEscape = () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+  const prompt = showFloatingPrompt({
+    title: `Pick the ${role} feature`,
+    hint: `Click a unit or opening on the map. Esc to cancel.`,
+    extraButton: { label: `Set ${role} to none (leads outside)` },
+  });
+
+  let outcome;
+  prompt.cancelBtn.onclick = () => { outcome = ENDPOINT_CANCELLED; fireEscape(); };
+  prompt.extraBtn.onclick  = () => { outcome = null;               fireEscape(); };
+
+  const picked = await pickFeature(ctx.map, { types: ['unit', 'opening'] });
+  prompt.dismiss();
+
+  if (outcome === null) return null;
+  if (!picked) return ENDPOINT_CANCELLED;
+  return picked;
+}
+
 async function summarizeRefs(origin, destination) {
   const [o, d] = await Promise.all([
-    features.get(origin.id),
-    features.get(destination.id),
+    origin ? features.get(origin.id) : null,
+    destination ? features.get(destination.id) : null,
   ]);
   return `Origin: ${refLabel(o, origin)}\nDestination: ${refLabel(d, destination)}`;
 }
 
 function refLabel(row, ref) {
+  if (ref === null) return '(none — leads outside)';
   if (!row) return `${ref.feature_type} · (deleted)`;
   const p = row.properties || {};
   const name = p.name?.en || Object.values(p.name || {})[0] || row.id.slice(0, 8);
@@ -876,14 +896,16 @@ async function showFloorListModal(tableHtml) {
 // Floating prompts (non-modal map-overlay UI)
 // ---------------------------------------------------------------------------
 
-function showFloatingPrompt({ title, hint }) {
+function showFloatingPrompt({ title, hint, extraButton }) {
   const mapEl = document.getElementById('map');
   const el = document.createElement('div');
   el.className = 'wizard-floating-prompt';
+  const extraHtml = extraButton ? `<button type="button" class="extra">${extraButton.label}</button>` : '';
   el.innerHTML = `
     <div class="title"></div>
     <p class="hint"></p>
     <div class="actions">
+      ${extraHtml}
       <button type="button" class="cancel">Cancel</button>
     </div>
   `;
@@ -892,6 +914,7 @@ function showFloatingPrompt({ title, hint }) {
   mapEl.appendChild(el);
   return {
     cancelBtn: el.querySelector('.cancel'),
+    extraBtn: el.querySelector('.extra'),
     dismiss: () => el.remove(),
   };
 }
