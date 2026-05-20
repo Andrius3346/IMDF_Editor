@@ -19,6 +19,7 @@ import { mountFeaturesLayer, refreshFeaturesLayer } from './map/features-layer.j
 import { installFeatureSelect } from './map/feature-select.js';
 import { mountBuildingPlanImport } from './ui/building-plan-import.js';
 import { mountLayersPanel, refreshLayersPanel } from './ui/layers-panel.js';
+import { mountLevelsPanel, refreshLevelsPanel } from './ui/levels-panel.js';
 import { mountPropertyPanel } from './ui/property-panel.js';
 import { showWelcomeModal } from './ui/welcome-modal.js';
 import { startWizard } from './ui/wizard/wizard.js';
@@ -38,6 +39,9 @@ async function refreshAll() {
   await refreshHeader();
   await refreshLayersPanel();
   if (map) await refreshFeaturesLayer(map);
+  // Levels panel must run after the features layer cache is populated so
+  // setActiveLevel / setHiddenLevels apply against fresh rows.
+  await refreshLevelsPanel();
   isDirty = await hasData();
 }
 
@@ -134,6 +138,7 @@ async function init() {
 
     mountBuildingPlanImport({ map, refreshAll });
     mountLayersPanel({ map, refreshAll });
+    mountLevelsPanel({ map });
     mountPropertyPanel({ map, refreshAll });
     installFeatureSelect(map);
   } catch (err) {

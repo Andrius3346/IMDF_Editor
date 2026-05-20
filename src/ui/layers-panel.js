@@ -30,10 +30,16 @@ export async function refreshLayersPanel() {
   list.innerHTML = '';
   const hasOverlays = sorted.length > 0;
   document.body.classList.toggle('has-overlays', hasOverlays);
+  // Sidebar visibility is owned by the shared CSS rule
+  // `body:not(.has-overlays):not(.has-levels)`. Each panel toggles its own
+  // body class; the sidebar shows when either is present.
+  const overlaysSection = document.getElementById('overlays-section');
+  if (overlaysSection) overlaysSection.hidden = !hasOverlays;
   const sidebar = document.getElementById('sidebar');
   if (sidebar) {
-    sidebar.hidden = !hasOverlays;
-    sidebar.style.display = hasOverlays ? '' : 'none';
+    const shouldShow = hasOverlays || document.body.classList.contains('has-levels');
+    sidebar.hidden = !shouldShow;
+    sidebar.style.display = shouldShow ? '' : 'none';
   }
 
   const editingId = getActiveOverlayId();

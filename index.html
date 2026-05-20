@@ -34,10 +34,13 @@
       grid-column: 3;
       border-left: 1px solid #8884; overflow: auto; padding: 12px 14px;
     }
-    /* Sidebar (currently only the Overlays panel) is hidden until the
-       first building plan is uploaded — the map gets the full width. */
-    body:not(.has-overlays) { --sidebar-w: 0px; }
-    body:not(.has-overlays) aside#sidebar { display: none; }
+    /* Sidebar is hidden until the user has either at least one building plan
+       (Overlays section) or at least one level (Levels section). */
+    body:not(.has-overlays):not(.has-levels) { --sidebar-w: 0px; }
+    body:not(.has-overlays):not(.has-levels) aside#sidebar { display: none; }
+    /* During the wizard's drawing loops the Levels section is hidden so the
+       user can't change floors while in the middle of a draw. */
+    body.wizard-drawing #levels-section { display: none; }
     section { margin-bottom: 18px; }
     section h2 { margin: 0 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.7; }
     .card { padding: 10px 12px; border: 1px solid #8884; border-radius: 6px; }
@@ -46,6 +49,22 @@
     table th { font-weight: 600; opacity: 0.7; }
     code { font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; }
     .muted { opacity: 0.7; }
+
+    /* Levels panel */
+    #level-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px; }
+    .level-row {
+      display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: center;
+      padding: 6px 8px; border: 1px solid #8884; border-radius: 4px;
+    }
+    .level-row label { display: contents; cursor: pointer; }
+    .level-row input[type=radio] { margin: 0; cursor: pointer; }
+    .level-row .level-label { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .level-row button.visibility {
+      background: transparent; border: 1px solid #8884; border-radius: 3px;
+      padding: 2px 6px; font-size: 12px; line-height: 1; cursor: pointer;
+    }
+    .level-row button.visibility:hover { background: #8882; }
+    .level-row.hidden-level .level-label { opacity: 0.5; }
 
     /* Overlays panel */
     #overlay-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; }
@@ -318,7 +337,13 @@
     </div>
 
     <aside id="sidebar" hidden style="display: none">
-      <section>
+      <section id="levels-section" hidden>
+        <h2>Levels</h2>
+        <div class="card">
+          <ul id="level-list"></ul>
+        </div>
+      </section>
+      <section id="overlays-section">
         <h2>Overlays</h2>
         <div class="card">
           <ul id="overlay-list"></ul>

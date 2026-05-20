@@ -21,10 +21,14 @@ const LAYERS = [
     paint: { 'line-color': '#333', 'line-width': 2 },
   },
   // Level — translucent fill, distinct color per active vs. inactive.
+  // Filter excludes is_hidden so the level picker can hide whole floors.
   {
     id: 'imdf-level-fill',
     type: 'fill',
-    filter: ['==', ['get', 'feature_type'], 'level'],
+    filter: ['all',
+      ['==', ['get', 'feature_type'], 'level'],
+      ['!=', ['get', 'is_hidden'], true],
+    ],
     paint: {
       'fill-color': ['case', ['get', 'is_active'], '#4a90e2', '#888'],
       'fill-opacity': ['case', ['get', 'is_active'], 0.12, 0.05],
@@ -33,7 +37,10 @@ const LAYERS = [
   {
     id: 'imdf-level-line',
     type: 'line',
-    filter: ['==', ['get', 'feature_type'], 'level'],
+    filter: ['all',
+      ['==', ['get', 'feature_type'], 'level'],
+      ['!=', ['get', 'is_hidden'], true],
+    ],
     paint: {
       'line-color': ['case', ['get', 'is_active'], '#3a7ac2', '#666'],
       'line-width': ['case', ['get', 'is_active'], 2, 1],
@@ -43,7 +50,10 @@ const LAYERS = [
   {
     id: 'imdf-unit-fill',
     type: 'fill',
-    filter: ['==', ['get', 'feature_type'], 'unit'],
+    filter: ['all',
+      ['==', ['get', 'feature_type'], 'unit'],
+      ['!=', ['get', 'is_hidden'], true],
+    ],
     paint: {
       'fill-color': '#f5b342',
       'fill-opacity': ['case', ['get', 'is_active'], 0.4, 0.1],
@@ -52,7 +62,10 @@ const LAYERS = [
   {
     id: 'imdf-unit-line',
     type: 'line',
-    filter: ['==', ['get', 'feature_type'], 'unit'],
+    filter: ['all',
+      ['==', ['get', 'feature_type'], 'unit'],
+      ['!=', ['get', 'is_hidden'], true],
+    ],
     paint: {
       'line-color': '#a06a10',
       'line-width': ['case', ['get', 'is_active'], 1.5, 0.6],
@@ -74,7 +87,10 @@ const LAYERS = [
   {
     id: 'imdf-opening-line',
     type: 'line',
-    filter: ['==', ['get', 'feature_type'], 'opening'],
+    filter: ['all',
+      ['==', ['get', 'feature_type'], 'opening'],
+      ['!=', ['get', 'is_hidden'], true],
+    ],
     paint: {
       'line-color': '#d63b3b',
       'line-width': ['case', ['get', 'is_active'], 3, 1.5],
@@ -108,6 +124,7 @@ const LAYERS = [
 ];
 
 let activeLevelId = null;
+let hiddenLevelIds = new Set();
 let selectedFeatureId = null;
 // Cached rows from the last refreshFeaturesLayer() call. Selection / active-
 // level toggles only flip per-feature booleans, so they reuse the cache and
@@ -159,6 +176,7 @@ function applyCachedRows(map) {
           feature_type: r.feature_type,
           level_id: r.level_id ?? null,
           is_active: isActive(r),
+          is_hidden: isHidden(r),
           is_selected: r.id === selectedFeatureId,
         },
       })),
@@ -181,6 +199,17 @@ function isActive(row) {
   return true; // footprint / venue / address always render at full opacity
 }
 
+// is_hidden is strictly opt-in by feature type. Only level/unit/opening can be
+// hidden by the level picker. Venue, building, footprint, address, relationship
+// always render regardless of picker state.
+function isHidden(row) {
+  if (row.feature_type === 'level') return hiddenLevelIds.has(row.id);
+  if (row.feature_type === 'unit' || row.feature_type === 'opening') {
+    return hiddenLevelIds.has(row.level_id);
+  }
+  return false;
+}
+
 /**
  * Set the floor the user is currently authoring. Units on other floors
  * dim out so the active floor stands out. Pass `null` to disable dimming.
@@ -193,6 +222,20 @@ export function setActiveLevel(map, levelId) {
 
 export function getActiveLevel() {
   return activeLevelId;
+}
+
+/**
+ * Set the set of level ids whose features should be hidden (level itself plus
+ * any unit/opening with matching level_id). Pass an empty Set to show all.
+ */
+export function setHiddenLevels(map, idsSet) {
+  hiddenLevelIds = idsSet instanceof Set ? idsSet : new Set(idsSet ?? []);
+  if (cachedRows) applyCachedRows(map);
+  else refreshFeaturesLayer(map);
+}
+
+export function getHiddenLevels() {
+  return new Set(hiddenLevelIds);
 }
 
 /**

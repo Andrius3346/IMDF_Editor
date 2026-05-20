@@ -23,6 +23,18 @@ import { RELATIONSHIP_CATEGORY, RELATIONSHIP_DIRECTION } from '../../imdf/schema
 let ctx = null; // { map, refreshAll }
 
 /**
+ * Add `wizard-drawing` to the body for the duration of `fn`. The Levels panel
+ * hides itself when this class is present so the user can't switch floors
+ * mid-draw or mid-floor-loop and accidentally drop features on the wrong
+ * floor. Always pairs with a removal in `finally`.
+ */
+async function withDrawingHidden(fn) {
+  document.body.classList.add('wizard-drawing');
+  try { return await fn(); }
+  finally { document.body.classList.remove('wizard-drawing'); }
+}
+
+/**
  * Entry point. Called from main.js after the user picks "Create new" on
  * the welcome modal.
  */
@@ -283,11 +295,13 @@ async function stepFootprintAndLevelGeometry() {
     hint: 'Trace the ground floor outline. Double-click the last point to finish.',
   });
   await endWizardEditSession(ctx.map);
-  const ctl = drawPolygon(ctx.map, {
-    snapTargets: await collectSnapTargetsForTypes(['venue']),
+  const geometry = await withDrawingHidden(async () => {
+    const ctl = drawPolygon(ctx.map, {
+      snapTargets: await collectSnapTargetsForTypes(['venue']),
+    });
+    prompt.cancelBtn.onclick = () => ctl.cancel();
+    return ctl.promise;
   });
-  prompt.cancelBtn.onclick = () => ctl.cancel();
-  const geometry = await ctl.promise;
   prompt.dismiss();
   if (!geometry) throw new Error('cancelled');
 
@@ -458,11 +472,13 @@ async function stepFloor(ordinal) {
     hint: 'Click around the floor outline as it appears in the plan. Double-click to finish.',
   });
   await endWizardEditSession(ctx.map);
-  const ctl = drawPolygon(ctx.map, {
-    snapTargets: await collectSnapTargetsForTypes(['footprint', 'venue', 'level']),
+  const geometry = await withDrawingHidden(async () => {
+    const ctl = drawPolygon(ctx.map, {
+      snapTargets: await collectSnapTargetsForTypes(['footprint', 'venue', 'level']),
+    });
+    prompt.cancelBtn.onclick = () => ctl.cancel();
+    return ctl.promise;
   });
-  prompt.cancelBtn.onclick = () => ctl.cancel();
-  const geometry = await ctl.promise;
   prompt.dismiss();
 
   if (!geometry) throw new Error('cancelled');
@@ -521,6 +537,10 @@ async function stepFloor(ordinal) {
 }
 
 async function stepUnits() {
+  return withDrawingHidden(() => stepUnitsImpl());
+}
+
+async function stepUnitsImpl() {
   const state = activeState.getState();
   const panel = showFloorPanel({
     title: `Floor ${formatOrdinal(state.currentOrdinal)} — add rooms`,
@@ -593,6 +613,10 @@ async function stepUnits() {
 // ---------------------------------------------------------------------------
 
 async function stepOpenings() {
+  return withDrawingHidden(() => stepOpeningsImpl());
+}
+
+async function stepOpeningsImpl() {
   const state = activeState.getState();
   const panel = showOpeningPanel({
     title: `Floor ${formatOrdinal(state.currentOrdinal)} — add openings`,
